@@ -67,9 +67,6 @@ fun SettingsScreen(
     modifier: Modifier = Modifier
 ) {
     val settings by viewModel.settings.collectAsState()
-    val diagnostics by viewModel.diagnostics.collectAsState()
-    val isReloading by viewModel.isReloadingModels.collectAsState()
-    val reloadFeedback by viewModel.lastReloadFeedback.collectAsState()
     val scrollState = rememberScrollState()
 
     Column(
@@ -492,110 +489,6 @@ fun SettingsScreen(
                     },
                     modifier = Modifier.testTag("simulation_mode_switch")
                 )
-            }
-        }
-
-        // Section E: Models and Diagnostics
-        SettingsSectionCard(
-            title = "E. Models & Diagnostics",
-            icon = Icons.Default.Memory
-        ) {
-            // Status feedback with exact requested statuses: Waiting for upload / Loaded / Failed
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Detector (${diagnostics.detectorFileName})",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                Text(
-                    text = if (diagnostics.detectorLoaded) "LOADED" else if (diagnostics.detector.isMissing) "WAITING FOR UPLOAD" else "FAILED",
-                    fontWeight = FontWeight.Bold,
-                    color = if (diagnostics.detectorLoaded) Color(0xFF2E7D32) else if (diagnostics.detector.isMissing) Color(0xFFF57F17) else Color(0xFFC62828)
-                )
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Classifier (${diagnostics.classifierFileName})",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                Text(
-                    text = if (diagnostics.classifierLoaded) "LOADED" else if (diagnostics.classifier.isMissing) "WAITING FOR UPLOAD" else "FAILED",
-                    fontWeight = FontWeight.Bold,
-                    color = if (diagnostics.classifierLoaded) Color(0xFF2E7D32) else if (diagnostics.classifier.isMissing) Color(0xFFF57F17) else Color(0xFFC62828)
-                )
-            }
-
-            if (!diagnostics.allModelsLoaded) {
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = "Both trained model files must be placed in app/src/main/assets/. After upload, tap 'Retry Loading' below to initialize both interpreters.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(10.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(2.dp))
-
-            // Repaired functional Retry Loading button with loading indicator and feedback
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Button(
-                    onClick = { viewModel.retryModelLoading() },
-                    enabled = !isReloading,
-                    modifier = Modifier.weight(1f).testTag("settings_retry_models_button")
-                ) {
-                    if (isReloading) {
-                        CircularProgressIndicator(
-                            color = MaterialTheme.colorScheme.onPrimary,
-                            strokeWidth = 2.dp,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Scanning...")
-                    } else {
-                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Retry Loading")
-                    }
-                }
-
-                FilledTonalButton(
-                    onClick = { viewModel.navigateTo(AppScreen.DIAGNOSTICS) },
-                    modifier = Modifier.weight(1f).testTag("settings_view_diagnostics_button")
-                ) {
-                    Text("View Details")
-                }
-            }
-
-            reloadFeedback?.let { feedback ->
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = feedback,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(8.dp)
-                    )
-                }
             }
         }
     }

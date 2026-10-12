@@ -150,7 +150,7 @@ class ModelManager(private val context: Context) {
         // Check byte size
         val size = getSourceByteLength(source)
         if (size == 0L) {
-            val errMsg = "File is empty (0 bytes) at $locationDesc. Please upload the actual trained .tflite binary."
+            val errMsg = "Model file is empty (0 bytes) at $locationDesc."
             Log.w(tag, errMsg)
             return ModelStatusInfo(
                 fileName = fileName,

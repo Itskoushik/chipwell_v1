@@ -48,6 +48,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.example.chipvision.ui.AppScreen
@@ -64,16 +72,101 @@ fun HomeScreen(
     val cumulativeStats by viewModel.cumulativeStats.collectAsState()
     val settings by viewModel.settings.collectAsState()
 
-    val hasCameraPermission = ContextCompat.checkSelfPermission(
-        context,
-        Manifest.permission.CAMERA
-    ) == PackageManager.PERMISSION_GRANTED
+    var hasCameraPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.CAMERA
+            ) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+
+    var showNotReadyDialog by remember { mutableStateOf<String?>(null) }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        hasCameraPermission = granted
+        if (granted) {
+            when (val check = viewModel.checkInspectionPrerequisites(hasCameraPermission = true)) {
+                is ChipVisionViewModel.InspectionStartResult.Ready -> {
+                    viewModel.navigateTo(AppScreen.INSPECTION)
+                }
+                is ChipVisionViewModel.InspectionStartResult.MissingCameraPermission -> {}
+                is ChipVisionViewModel.InspectionStartResult.ModelsNotReady -> {
+                    showNotReadyDialog = check.reason
+                }
+            }
+        }
+    }
+
+    val onStartInspectionClick = {
+        if (!hasCameraPermission) {
+            permissionLauncher.launch(Manifest.permission.CAMERA)
+        } else {
+            when (val check = viewModel.checkInspectionPrerequisites(hasCameraPermission = true)) {
+                is ChipVisionViewModel.InspectionStartResult.Ready -> {
+                    viewModel.navigateTo(AppScreen.INSPECTION)
+                }
+                is ChipVisionViewModel.InspectionStartResult.MissingCameraPermission -> {
+                    permissionLauncher.launch(Manifest.permission.CAMERA)
+                }
+                is ChipVisionViewModel.InspectionStartResult.ModelsNotReady -> {
+                    showNotReadyDialog = check.reason
+                }
+            }
+        }
+    }
 
     val scrollState = rememberScrollState()
 
     val totalSavedInspections = historyRecords.size
     val passSavedCount = historyRecords.count { it.isPass }
     val failSavedCount = historyRecords.count { !it.isPass }
+
+    // Pre-flight validation error dialog
+    showNotReadyDialog?.let { errorMessage ->
+        AlertDialog(
+            onDismissRequest = { showNotReadyDialog = null },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.Warning,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = {
+                Text(
+                    text = "Cannot Start Inspection",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    text = errorMessage,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showNotReadyDialog = null
+                        viewModel.navigateTo(AppScreen.SETTINGS)
+                    }
+                ) {
+                    Text("Settings")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showNotReadyDialog = null }
+                ) {
+                    Text("Dismiss")
+                }
+            }
+        )
+    }
 
     Column(
         modifier = modifier
@@ -130,30 +223,44 @@ fun HomeScreen(
 
                 Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-                // Readiness indicators row
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                // Industrial system readiness banner (no separate detector/classifier badges)
+                val isSystemReady = viewModel.isSystemReady()
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (isSystemReady) Color(0xFF2E7D32).copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier.fillMaxWidth().testTag("home_system_status_bar")
                 ) {
-                    IndicatorPill(
-                        label = "Camera",
-                        isOk = hasCameraPermission,
-                        okText = "Ready",
-                        errText = "Permission Needed"
-                    )
-                    IndicatorPill(
-                        label = "Detector",
-                        isOk = diagnostics.detectorLoaded || settings.simulationMode,
-                        okText = if (settings.simulationMode) "Demo" else "Loaded",
-                        errText = if (diagnostics.detector.isMissing) "Waiting for upload" else "Failed"
-                    )
-                    IndicatorPill(
-                        label = "Classifier",
-                        isOk = diagnostics.classifierLoaded || settings.simulationMode,
-                        okText = if (settings.simulationMode) "Demo" else "Loaded",
-                        errText = if (diagnostics.classifier.isMissing) "Waiting for upload" else "Failed"
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isSystemReady) Icons.Default.CheckCircle else Icons.Default.Info,
+                                contentDescription = null,
+                                tint = if (isSystemReady) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = if (settings.simulationMode) "System: Demo Simulation Mode" else if (isSystemReady) "System: Ready for Live Inspection" else "System: Standby",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isSystemReady) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        Text(
+                            text = if (hasCameraPermission) "Camera: Ready" else "Camera: Needs Permission",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (hasCameraPermission) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
                 }
             }
         }
@@ -175,7 +282,7 @@ fun HomeScreen(
             elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { viewModel.navigateTo(AppScreen.INSPECTION) }
+                .clickable(onClick = onStartInspectionClick)
                 .testTag("home_card_inspection")
         ) {
             Column(
@@ -215,7 +322,7 @@ fun HomeScreen(
                 }
 
                 Button(
-                    onClick = { viewModel.navigateTo(AppScreen.INSPECTION) },
+                    onClick = onStartInspectionClick,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(44.dp)
@@ -249,16 +356,6 @@ fun HomeScreen(
             description = "Configure detection, stability, audio, and inspection options",
             tag = "home_card_settings",
             onClick = { viewModel.navigateTo(AppScreen.SETTINGS) }
-        )
-
-        // 4. Model Diagnostics Card
-        NavActionCard(
-            icon = Icons.Default.Memory,
-            iconTint = if (diagnostics.allModelsLoaded) Color(0xFF2E7D32) else Color(0xFFF57F17),
-            title = "Model Diagnostics",
-            description = if (diagnostics.allModelsLoaded) "Both models verified and ready" else "Check model availability, tensor shapes and errors",
-            tag = "home_card_diagnostics",
-            onClick = { viewModel.navigateTo(AppScreen.DIAGNOSTICS) }
         )
 
         // Summary Section
@@ -303,62 +400,7 @@ fun HomeScreen(
                         SummaryStat(label = "Yield Rate", value = "${"%.1f".format(yieldRate)}%", color = if (yieldRate >= 95f) Color(0xFF2E7D32) else Color(0xFFF57F17))
                     }
                 }
-
-                Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "System Model Readiness:",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = if (diagnostics.allModelsLoaded) "All Models Loaded" else if (settings.simulationMode) "Simulation Mode" else "Incomplete",
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.Bold,
-                        color = if (diagnostics.allModelsLoaded) Color(0xFF2E7D32) else if (settings.simulationMode) MaterialTheme.colorScheme.primary else Color(0xFFC62828)
-                    )
-                }
             }
-        }
-    }
-}
-
-@Composable
-private fun IndicatorPill(
-    label: String,
-    isOk: Boolean,
-    okText: String,
-    errText: String
-) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Spacer(modifier = Modifier.height(2.dp))
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(8.dp)
-                    .clip(CircleShape)
-                    .background(if (isOk) Color(0xFF2E7D32) else Color(0xFFC62828))
-            )
-            Text(
-                text = if (isOk) okText else errText,
-                style = MaterialTheme.typography.labelSmall,
-                color = if (isOk) Color(0xFF2E7D32) else Color(0xFFC62828),
-                fontWeight = FontWeight.Bold
-            )
         }
     }
 }

@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Warning
@@ -79,7 +80,6 @@ fun InspectionScreen(
     val currentDecision by viewModel.currentDecision.collectAsState()
     val cumulativeStats by viewModel.cumulativeStats.collectAsState()
     val frameStats by viewModel.currentFrameStats.collectAsState()
-    val diagnostics by viewModel.diagnostics.collectAsState()
     val isStopped by viewModel.isStopped.collectAsState()
     val settings by viewModel.settings.collectAsState()
 
@@ -118,11 +118,8 @@ fun InspectionScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        // Status indicator chips bar
-        DiagnosticsStatusHeader(
-            detectorReady = diagnostics.detectorLoaded,
-            classifierReady = diagnostics.classifierLoaded,
-            hasCamera = hasCameraPermission,
+        // Industrial inspection top bar (clean header, no separate model badges)
+        InspectionTopBar(
             simulationMode = settings.simulationMode
         )
 
@@ -327,10 +324,7 @@ fun InspectionScreen(
 }
 
 @Composable
-fun DiagnosticsStatusHeader(
-    detectorReady: Boolean,
-    classifierReady: Boolean,
-    hasCamera: Boolean,
+fun InspectionTopBar(
     simulationMode: Boolean,
     modifier: Modifier = Modifier
 ) {
@@ -341,25 +335,25 @@ fun DiagnosticsStatusHeader(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 6.dp),
+                .padding(horizontal = 14.dp, vertical = 6.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                StatusBadge(
-                    label = "CAMERA",
-                    isOk = hasCamera
+                Icon(
+                    imageVector = Icons.Default.QrCodeScanner,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp)
                 )
-                StatusBadge(
-                    label = "DETECTOR",
-                    isOk = detectorReady || simulationMode
-                )
-                StatusBadge(
-                    label = "CLASSIFIER",
-                    isOk = classifierReady || simulationMode
+                Text(
+                    text = "CONVEYOR INSPECTION",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
@@ -378,27 +372,6 @@ fun DiagnosticsStatusHeader(
                 }
             }
         }
-    }
-}
-
-@Composable
-fun StatusBadge(label: String, isOk: Boolean) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(7.dp)
-                .clip(CircleShape)
-                .background(if (isOk) Color(0xFF43A047) else Color(0xFFE53935))
-        )
-        Text(
-            text = label,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
     }
 }
 

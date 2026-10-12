@@ -97,13 +97,13 @@ fun DiagnosticsScreen(
                     )
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = if (diagnostics.allModelsLoaded) "All Models Loaded Successfully" else "Model Compatibility Alert",
+                            text = if (diagnostics.allModelsLoaded) "Neural Network Interpreters Active" else "Technical Diagnostics",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = if (diagnostics.allModelsLoaded) Color(0xFF2E7D32) else MaterialTheme.colorScheme.error
+                            color = if (diagnostics.allModelsLoaded) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = "Last verified at $checkTimeStr",
+                            text = "Last scan: $checkTimeStr",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -129,11 +129,11 @@ fun DiagnosticsScreen(
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Scanning Assets & Loading...")
+                        Text("Scanning Assets & Initializing...")
                     } else {
                         Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Re-scan & Reload Models")
+                        Text("Re-scan Assets & Initialize")
                     }
                 }
 
@@ -158,18 +158,18 @@ fun DiagnosticsScreen(
 
         // Detector Diagnostic Card
         ModelDetailCard(
-            title = "1. Chip Detector Model",
+            title = "Chip Detector",
             expectedFilename = "chipvision_detector_direct.tflite",
             status = diagnostics.detector,
-            classesDescription = "Class 0 = chip, Class 1 = empty impression"
+            classesDescription = "Class 0 = chip, Class 1 = empty impression (Confidence > 0.85)"
         )
 
         // Classifier Diagnostic Card
         ModelDetailCard(
-            title = "2. Chip Classifier Model",
+            title = "Chip Classifier",
             expectedFilename = "chipvision_classifier.tflite",
             status = diagnostics.classifier,
-            classesDescription = "6 Classes: PCS_06_K (upward, downward, flipped), PCS_26_C (upward, downward, flipped)"
+            classesDescription = "6 Classes: PCS_06_K, PCS_26_C (Confidence >= 0.70)"
         )
 
         // Asset Placement Guide Card
@@ -247,37 +247,11 @@ private fun ModelDetailCard(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-
-                val (badgeBg, badgeText, badgeColor) = when {
-                    status.isLoaded -> Triple(Color(0xFF2E7D32).copy(alpha = 0.15f), "LOADED", Color(0xFF2E7D32))
-                    status.isMissing -> Triple(Color(0xFFF57F17).copy(alpha = 0.15f), "WAITING FOR UPLOAD", Color(0xFFF57F17))
-                    status.isEmptyFile -> Triple(Color(0xFFF57F17).copy(alpha = 0.15f), "EMPTY FILE (0 B)", Color(0xFFF57F17))
-                    else -> Triple(Color(0xFFC62828).copy(alpha = 0.15f), "FAILED", Color(0xFFC62828))
-                }
-
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = badgeBg
-                ) {
-                    Text(
-                        text = badgeText,
-                        color = badgeColor,
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 11.sp,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                    )
-                }
-            }
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
 
             Divider()
 
@@ -290,9 +264,9 @@ private fun ModelDetailCard(
             DiagnosticsRow(
                 label = "Status",
                 value = when {
-                    status.isLoaded -> "Loaded (Verified & Ready for Inference)"
-                    status.isMissing -> "Waiting for upload (place file in app/src/main/assets/)"
-                    status.isEmptyFile -> "Empty file (0 bytes) - Upload real binary model"
+                    status.isLoaded -> "Active (Interpreter Initialized)"
+                    status.isMissing -> "Not Loaded (File not found in assets)"
+                    status.isEmptyFile -> "Empty File (0 bytes)"
                     else -> "Failed (${status.error})"
                 }
             )

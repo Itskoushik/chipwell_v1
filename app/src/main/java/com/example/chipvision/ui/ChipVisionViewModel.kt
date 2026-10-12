@@ -100,8 +100,40 @@ class ChipVisionViewModel(application: Application) : AndroidViewModel(applicati
     // Legacy tab flow for compatibility
     val currentTab: StateFlow<MainNavTab> = MutableStateFlow(MainNavTab.INSPECTION)
 
+    sealed class InspectionStartResult {
+        object Ready : InspectionStartResult()
+        object MissingCameraPermission : InspectionStartResult()
+        data class ModelsNotReady(val reason: String) : InspectionStartResult()
+    }
+
     init {
-        coordinator.initialize()
+        viewModelScope.launch(Dispatchers.IO) {
+            coordinator.initialize()
+        }
+    }
+
+    fun isSystemReady(): Boolean {
+        val sim = settings.value.simulationMode
+        val diag = coordinator.diagnostics.value
+        return sim || (diag.detectorLoaded && diag.classifierLoaded)
+    }
+
+    fun checkInspectionPrerequisites(hasCameraPermission: Boolean): InspectionStartResult {
+        if (!hasCameraPermission) {
+            return InspectionStartResult.MissingCameraPermission
+        }
+        val sim = settings.value.simulationMode
+        val diag = coordinator.diagnostics.value
+        if (sim || (diag.detectorLoaded && diag.classifierLoaded)) {
+            return InspectionStartResult.Ready
+        }
+        val missing = mutableListOf<String>()
+        if (!diag.detectorLoaded) missing.add("Detector model (${com.example.chipvision.inference.ModelManager.DETECTOR_FILE_NAME})")
+        if (!diag.classifierLoaded) missing.add("Classifier model (${com.example.chipvision.inference.ModelManager.CLASSIFIER_FILE_NAME})")
+        return InspectionStartResult.ModelsNotReady(
+            "Cannot start inspection: Neural network models are not loaded into memory (${missing.joinToString(", ")}).\n\n" +
+            "Please ensure the model files are located in assets, or enable Simulation Mode in Settings for testing."
+        )
     }
 
     fun navigateTo(screen: AppScreen) {
@@ -121,6 +153,7 @@ class ChipVisionViewModel(application: Application) : AndroidViewModel(applicati
      * updating state and feedback message to eliminate frozen or silent retry behavior.
      */
     fun retryModelLoading() {
+        if (_isReloadingModels.value) return
         viewModelScope.launch(Dispatchers.IO) {
             _isReloadingModels.value = true
             try {
