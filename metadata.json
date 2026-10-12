@@ -1,0 +1,6 @@
+{
+  "name": "CHIPVISION",
+  "description": "Automated Chip Inspection System for continuous conveyor inspection using TFLite detector and classifier.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
