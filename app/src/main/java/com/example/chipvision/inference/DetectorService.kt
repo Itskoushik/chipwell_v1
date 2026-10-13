@@ -7,6 +7,7 @@ import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RectF
 import android.util.Log
+import android.os.SystemClock
 import com.example.chipvision.data.model.Detection
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -19,15 +20,14 @@ class DetectorService(private val modelManager: ModelManager) {
     private var inputBuffer: ByteBuffer? = null
     private var lastInputSize: Int = 0
     private var lastNchw: Boolean = false
-
-    private val outputArray = Array(1) { Array(300) { FloatArray(6) } }
+    private var inferenceCount = 0L
 
     /**
      * Runs detection on the supplied RGB Bitmap.
      * Maps coordinates back to the original image dimensions [origWidth x origHeight].
      */
     @Synchronized
-    fun detect(bitmap: Bitmap, threshold: Float = 0.85f): List<Detection> {
+    fun detect(bitmap: Bitmap, threshold: Float = 0.70f): List<Detection> {
         val interpreter = modelManager.detectorInterpreter ?: return emptyList()
 
         val inputSize = modelManager.detectorInputSize
@@ -87,6 +87,29 @@ class DetectorService(private val modelManager: ModelManager) {
         }
 
         // Run inference
+        val outputTensor = interpreter.getOutputTensor(0)
+        val outputShape = outputTensor.shape()
+        if (outputShape.size != 3 || outputShape[0] != 1 || outputTensor.dataType().name != "FLOAT32") {
+            Log.e(tag, "Unsupported detector output shape: ${outputShape.contentToString()}")
+            return emptyList()
+        }
+        val recordsFirst = outputShape[2] == 5 || outputShape[2] == 6
+        val channelsFirst = outputShape[1] == 5 || outputShape[1] == 6
+        if (recordsFirst == channelsFirst) {
+            Log.e(tag, "Ambiguous detector output layout: ${outputShape.contentToString()}")
+            return emptyList()
+        }
+        val recordSize = if (recordsFirst) outputShape[2] else outputShape[1]
+        val outputLayout = if (recordSize == 5) {
+            DetectorOutputLayout.CENTER_SINGLE_CLASS
+        } else {
+            DetectorOutputLayout.CENTER_MULTI_CLASS
+        }
+        val outputArray = Array(outputShape[0]) {
+            Array(outputShape[1]) { FloatArray(outputShape[2]) }
+        }
+
+        val inferenceStartMs = SystemClock.elapsedRealtime()
         try {
             interpreter.run(byteBuffer, outputArray)
         } catch (e: Exception) {
@@ -95,78 +118,84 @@ class DetectorService(private val modelManager: ModelManager) {
         }
 
         val detections = mutableListOf<Detection>()
-        val rawDetections = outputArray[0]
-
-        for (i in 0 until 300) {
-            val raw = rawDetections[i]
-            var x1 = raw[0]
-            var y1 = raw[1]
-            var x2 = raw[2]
-            var y2 = raw[3]
-            val confidence = raw[4]
-            val classIdRaw = raw[5]
-
-            // Strict threshold rule: confidence > threshold (reject if <= threshold)
-            if (confidence <= threshold || !confidence.isFinite() || confidence > 1.0f) {
-                continue
+        val rawDetections = outputArray.firstOrNull() ?: return emptyList()
+        val rowCount = if (recordsFirst) outputShape[1] else outputShape[2]
+        var finiteCount = 0
+        var supportedClassCount = 0
+        var validBoxCount = 0
+        var thresholdCount = 0
+        var maxConfidence = Float.NEGATIVE_INFINITY
+        val coordinateMax = if (recordsFirst) {
+            rawDetections.maxOf { values ->
+                values.take(4).maxOf { kotlin.math.abs(it) }
             }
-
-            val classId = classIdRaw.toInt()
-            if (classId != 0 && classId != 1) {
-                // Reject invalid classId
-                continue
+        } else {
+            (0 until rowCount).maxOf { index ->
+                (0 until 4).maxOf { valueIndex ->
+                    kotlin.math.abs(rawDetections[valueIndex][index])
+                }
             }
-
-            if (!x1.isFinite() || !y1.isFinite() || !x2.isFinite() || !y2.isFinite()) {
-                continue
-            }
-
-            // Determine if coordinates are in 512x512 space or 0..1 space
-            if (x2 > 1.5f || y2 > 1.5f || x1 > 1.5f || y1 > 1.5f) {
-                // Coordinates are in inputSize x inputSize pixels
-                // Unpad and scale back to original bitmap dimensions
-                x1 = (x1 - padX) / scale
-                y1 = (y1 - padY) / scale
-                x2 = (x2 - padX) / scale
-                y2 = (y2 - padY) / scale
+        }
+        val rawSample = (0 until minOf(3, rowCount)).joinToString { index ->
+            val values = if (recordsFirst) {
+                rawDetections[index]
             } else {
-                // Coordinates are normalized to inputSize
-                val px1 = x1 * inputSize
-                val py1 = y1 * inputSize
-                val px2 = x2 * inputSize
-                val py2 = y2 * inputSize
-
-                x1 = (px1 - padX) / scale
-                y1 = (py1 - padY) / scale
-                x2 = (px2 - padX) / scale
-                y2 = (py2 - padY) / scale
+                FloatArray(recordSize) { valueIndex -> rawDetections[valueIndex][index] }
             }
+            values.joinToString(prefix = "[", postfix = "]")
+        }
 
-            // Order coords correctly
-            val left = minOf(x1, x2).coerceIn(0f, origW)
-            val top = minOf(y1, y2).coerceIn(0f, origH)
-            val right = maxOf(x1, x2).coerceIn(0f, origW)
-            val bottom = maxOf(y1, y2).coerceIn(0f, origH)
+        for (i in 0 until rowCount) {
+            val raw = if (recordsFirst) {
+                rawDetections[i]
+            } else {
+                FloatArray(recordSize) { valueIndex -> rawDetections[valueIndex][i] }
+            }
+            val confidence = if (recordSize == 5) raw[4] else maxOf(raw[4], raw[5])
 
-            // Reject zero-area or inverted boxes
-            if (right <= left || bottom <= top) {
+            // Detector candidates at the configured threshold are eligible.
+            if (confidence.isFinite()) {
+                finiteCount++
+                maxConfidence = maxOf(maxConfidence, confidence)
+            }
+            if (confidence < threshold || !confidence.isFinite()) {
                 continue
             }
+            thresholdCount++
 
-            // Reject degenerate tiny boxes (e.g. less than 4x4 pixels)
-            if ((right - left) < 4f || (bottom - top) < 4f) {
-                continue
-            }
-
-            detections.add(
-                Detection(
-                    boundingBox = RectF(left, top, right, bottom),
-                    confidence = confidence,
-                    classId = classId
-                )
+            val decoded = DetectorBoxDecoder.decode(
+                raw = raw,
+                layout = outputLayout,
+                coordinatesAreNormalized = coordinateMax <= 1.5f,
+                inputSize = inputSize,
+                padX = padX,
+                padY = padY,
+                scale = scale,
+                originalWidth = origW,
+                originalHeight = origH
+            ) ?: continue
+            supportedClassCount++
+            validBoxCount++
+            detections += Detection(
+                boundingBox = decoded.boundingBox,
+                confidence = decoded.confidence,
+                classId = decoded.classId
             )
         }
 
+        inferenceCount++
+        if (inferenceCount == 1L || inferenceCount % 30L == 0L) {
+            Log.i(
+                tag,
+                "Detector frame=$inferenceCount input=${inputSize}x${inputSize} " +
+                    "output=${outputShape.contentToString()} layout=$outputLayout " +
+                    "rawSample=$rawSample " +
+                    "raw=$rowCount finite=$finiteCount threshold=$thresholdCount " +
+                    "classes=$supportedClassCount boxes=$validBoxCount retained=${detections.size} " +
+                    "maxConfidence=$maxConfidence normalizedCoords=${coordinateMax <= 1.5f} " +
+                    "inferenceMs=${SystemClock.elapsedRealtime() - inferenceStartMs}"
+            )
+        }
         return detections
     }
 

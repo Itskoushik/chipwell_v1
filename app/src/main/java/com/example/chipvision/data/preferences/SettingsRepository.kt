@@ -16,12 +16,15 @@ import kotlinx.coroutines.flow.map
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "chipvision_settings")
 
 data class InspectionSettings(
-    val detectorThreshold: Float = 0.85f,
+    val detectorThreshold: Float = 0.70f,
     val classifierThreshold: Float = 0.70f,
-    val stabilityDurationMs: Long = 1500L,
+    val stabilityDurationMs: Long = DEFAULT_STABILITY_DURATION_MS,
     val maxWidthChangeRatio: Float = 0.20f,
     val maxHeightChangeRatio: Float = 0.20f,
     val minStableBoxIou: Float = 0.80f,
+    val movementCenterToleranceRatio: Float = 0.10f,
+    val movementIouTolerance: Float = 0.70f,
+    val movementConfirmationFrames: Int = 2,
     val globalMotionSensitivity: Float = 0.08f,
     val trackingTimeoutMs: Long = 400L,
     val inspectionTimeoutMs: Long = 5000L,
@@ -35,7 +38,11 @@ data class InspectionSettings(
     val voiceLocale: String = "en-US",
     val passAudioEnabled: Boolean = false,
     val simulationMode: Boolean = false // Demo / synthetic test mode for verification without physical conveyor
-)
+) {
+    companion object {
+        const val DEFAULT_STABILITY_DURATION_MS = 200L
+    }
+}
 
 class SettingsRepository(private val context: Context) {
 
@@ -46,6 +53,9 @@ class SettingsRepository(private val context: Context) {
         val MAX_WIDTH_CHANGE_RATIO = floatPreferencesKey("max_width_change_ratio")
         val MAX_HEIGHT_CHANGE_RATIO = floatPreferencesKey("max_height_change_ratio")
         val MIN_STABLE_BOX_IOU = floatPreferencesKey("min_stable_box_iou")
+        val MOVEMENT_CENTER_TOLERANCE_RATIO = floatPreferencesKey("movement_center_tolerance_ratio")
+        val MOVEMENT_IOU_TOLERANCE = floatPreferencesKey("movement_iou_tolerance")
+        val MOVEMENT_CONFIRMATION_FRAMES = intPreferencesKey("movement_confirmation_frames")
         val GLOBAL_MOTION_SENSITIVITY = floatPreferencesKey("global_motion_sensitivity")
         val TRACKING_TIMEOUT_MS = longPreferencesKey("tracking_timeout_ms")
         val INSPECTION_TIMEOUT_MS = longPreferencesKey("inspection_timeout_ms")
@@ -63,12 +73,17 @@ class SettingsRepository(private val context: Context) {
 
     val settingsFlow: Flow<InspectionSettings> = context.dataStore.data.map { preferences ->
         InspectionSettings(
-            detectorThreshold = preferences[PreferencesKeys.DETECTOR_THRESHOLD] ?: 0.85f,
+            detectorThreshold = preferences[PreferencesKeys.DETECTOR_THRESHOLD] ?: 0.70f,
             classifierThreshold = preferences[PreferencesKeys.CLASSIFIER_THRESHOLD] ?: 0.70f,
-            stabilityDurationMs = preferences[PreferencesKeys.STABILITY_DURATION_MS] ?: 1500L,
+            // Stability is camera-only and fixed at the application default.
+            // Legacy 500 ms/1500 ms values are not allowed to override it.
+            stabilityDurationMs = InspectionSettings.DEFAULT_STABILITY_DURATION_MS,
             maxWidthChangeRatio = preferences[PreferencesKeys.MAX_WIDTH_CHANGE_RATIO] ?: 0.20f,
             maxHeightChangeRatio = preferences[PreferencesKeys.MAX_HEIGHT_CHANGE_RATIO] ?: 0.20f,
             minStableBoxIou = preferences[PreferencesKeys.MIN_STABLE_BOX_IOU] ?: 0.80f,
+            movementCenterToleranceRatio = preferences[PreferencesKeys.MOVEMENT_CENTER_TOLERANCE_RATIO] ?: 0.10f,
+            movementIouTolerance = preferences[PreferencesKeys.MOVEMENT_IOU_TOLERANCE] ?: 0.70f,
+            movementConfirmationFrames = preferences[PreferencesKeys.MOVEMENT_CONFIRMATION_FRAMES] ?: 2,
             globalMotionSensitivity = preferences[PreferencesKeys.GLOBAL_MOTION_SENSITIVITY] ?: 0.08f,
             trackingTimeoutMs = preferences[PreferencesKeys.TRACKING_TIMEOUT_MS] ?: 400L,
             inspectionTimeoutMs = preferences[PreferencesKeys.INSPECTION_TIMEOUT_MS] ?: 5000L,
@@ -88,12 +103,15 @@ class SettingsRepository(private val context: Context) {
     suspend fun updateSettings(transform: (InspectionSettings) -> InspectionSettings) {
         context.dataStore.edit { preferences ->
             val current = InspectionSettings(
-                detectorThreshold = preferences[PreferencesKeys.DETECTOR_THRESHOLD] ?: 0.85f,
+                detectorThreshold = preferences[PreferencesKeys.DETECTOR_THRESHOLD] ?: 0.70f,
                 classifierThreshold = preferences[PreferencesKeys.CLASSIFIER_THRESHOLD] ?: 0.70f,
-                stabilityDurationMs = preferences[PreferencesKeys.STABILITY_DURATION_MS] ?: 1500L,
+                stabilityDurationMs = InspectionSettings.DEFAULT_STABILITY_DURATION_MS,
                 maxWidthChangeRatio = preferences[PreferencesKeys.MAX_WIDTH_CHANGE_RATIO] ?: 0.20f,
                 maxHeightChangeRatio = preferences[PreferencesKeys.MAX_HEIGHT_CHANGE_RATIO] ?: 0.20f,
                 minStableBoxIou = preferences[PreferencesKeys.MIN_STABLE_BOX_IOU] ?: 0.80f,
+                movementCenterToleranceRatio = preferences[PreferencesKeys.MOVEMENT_CENTER_TOLERANCE_RATIO] ?: 0.10f,
+                movementIouTolerance = preferences[PreferencesKeys.MOVEMENT_IOU_TOLERANCE] ?: 0.70f,
+                movementConfirmationFrames = preferences[PreferencesKeys.MOVEMENT_CONFIRMATION_FRAMES] ?: 2,
                 globalMotionSensitivity = preferences[PreferencesKeys.GLOBAL_MOTION_SENSITIVITY] ?: 0.08f,
                 trackingTimeoutMs = preferences[PreferencesKeys.TRACKING_TIMEOUT_MS] ?: 400L,
                 inspectionTimeoutMs = preferences[PreferencesKeys.INSPECTION_TIMEOUT_MS] ?: 5000L,
@@ -111,10 +129,14 @@ class SettingsRepository(private val context: Context) {
             val updated = transform(current)
             preferences[PreferencesKeys.DETECTOR_THRESHOLD] = updated.detectorThreshold
             preferences[PreferencesKeys.CLASSIFIER_THRESHOLD] = updated.classifierThreshold
-            preferences[PreferencesKeys.STABILITY_DURATION_MS] = updated.stabilityDurationMs
+            preferences[PreferencesKeys.STABILITY_DURATION_MS] =
+                InspectionSettings.DEFAULT_STABILITY_DURATION_MS
             preferences[PreferencesKeys.MAX_WIDTH_CHANGE_RATIO] = updated.maxWidthChangeRatio
             preferences[PreferencesKeys.MAX_HEIGHT_CHANGE_RATIO] = updated.maxHeightChangeRatio
             preferences[PreferencesKeys.MIN_STABLE_BOX_IOU] = updated.minStableBoxIou
+            preferences[PreferencesKeys.MOVEMENT_CENTER_TOLERANCE_RATIO] = updated.movementCenterToleranceRatio
+            preferences[PreferencesKeys.MOVEMENT_IOU_TOLERANCE] = updated.movementIouTolerance
+            preferences[PreferencesKeys.MOVEMENT_CONFIRMATION_FRAMES] = updated.movementConfirmationFrames
             preferences[PreferencesKeys.GLOBAL_MOTION_SENSITIVITY] = updated.globalMotionSensitivity
             preferences[PreferencesKeys.TRACKING_TIMEOUT_MS] = updated.trackingTimeoutMs
             preferences[PreferencesKeys.INSPECTION_TIMEOUT_MS] = updated.inspectionTimeoutMs

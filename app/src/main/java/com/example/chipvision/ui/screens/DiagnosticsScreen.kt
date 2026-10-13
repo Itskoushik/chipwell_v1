@@ -54,6 +54,8 @@ fun DiagnosticsScreen(
     modifier: Modifier = Modifier
 ) {
     val diagnostics by viewModel.diagnostics.collectAsState()
+    val performance by viewModel.performance.collectAsState()
+    val duplicateEvidence by viewModel.duplicateEvidence.collectAsState()
     val isReloading by viewModel.isReloadingModels.collectAsState()
     val reloadFeedback by viewModel.lastReloadFeedback.collectAsState()
     val scrollState = rememberScrollState()
@@ -161,7 +163,7 @@ fun DiagnosticsScreen(
             title = "Chip Detector",
             expectedFilename = "chipvision_detector_direct.tflite",
             status = diagnostics.detector,
-            classesDescription = "Class 0 = chip, Class 1 = empty impression (Confidence > 0.85)"
+            classesDescription = "Class 0 = chip, Class 1 = empty impression (confidence >= threshold)"
         )
 
         // Classifier Diagnostic Card
@@ -171,6 +173,102 @@ fun DiagnosticsScreen(
             status = diagnostics.classifier,
             classesDescription = "6 Classes: PCS_06_K, PCS_26_C (Confidence >= 0.70)"
         )
+
+        Card(
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            modifier = Modifier.fillMaxWidth().testTag("performance_diagnostics_card")
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = "Performance Metrics",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Divider()
+                MetricRow("Detector", performance.detector)
+                MetricRow("Classifier", performance.classifier)
+                MetricRow("Inspection cycle", performance.inspectionCycle)
+                MetricRow("Frame analysis", performance.frameAnalysis)
+                DiagnosticsRow("Processed frames", performance.processedFrames.toString())
+                DiagnosticsRow("Skipped frames", performance.skippedFrames.toString())
+                DiagnosticsRow("Stale results discarded", performance.staleResultsDiscarded.toString())
+                DiagnosticsRow("Completed inspections", performance.completedInspections.toString())
+                Text(
+                    text = "Cycle target: snapshot capture to final decision; result holds excluded.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        Card(
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            modifier = Modifier.fillMaxWidth().testTag("duplicate_diagnostics_card")
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = "Candidate Overlap Evidence",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = if (duplicateEvidence.enabled) {
+                        "Diagnostic samples every ${duplicateEvidence.sampleEveryNFrames} frames. Overlaps are not confirmed duplicates."
+                    } else {
+                        "Diagnostic collection disabled."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Divider()
+                DiagnosticsRow("Frames sampled", duplicateEvidence.framesSampled.toString())
+                DiagnosticsRow("Pair comparisons", duplicateEvidence.candidatePairComparisons.toString())
+                DiagnosticsRow("Same-class overlaps", duplicateEvidence.sameClassOverlappingPairs.toString())
+                DiagnosticsRow(
+                    "Candidates before / after filter",
+                    "${duplicateEvidence.candidateCountBeforeFilter} / ${duplicateEvidence.candidateCountAfterFilter}"
+                )
+                duplicateEvidence.frames.takeLast(3).forEach { frame ->
+                    val pairSummary = if (frame.overlappingSameClassPairs.isEmpty()) {
+                        "no same-class overlap"
+                    } else {
+                        frame.overlappingSameClassPairs.joinToString { pair ->
+                            "IoU=${"%.2f".format(Locale.US, pair.iou)}, " +
+                                "d=${"%.1f".format(Locale.US, pair.centerDistancePx)}px, " +
+                                "Δc=${"%.2f".format(Locale.US, pair.confidenceDifference)}"
+                        }
+                    }
+                    Text(
+                        text = "Frame ${frame.frameId}: ${frame.candidateCountBeforeFilter} -> " +
+                            "${frame.candidateCountAfterFilter}; $pairSummary",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    frame.candidates.take(4).forEachIndexed { index, candidate ->
+                        val box = candidate.boundingBox
+                        Text(
+                            text = "  c$index class=${candidate.classId} " +
+                                "conf=${"%.2f".format(Locale.US, candidate.confidence)} " +
+                                "box=[${"%.0f".format(Locale.US, box.left)}," +
+                                "${"%.0f".format(Locale.US, box.top)}-" +
+                                "${"%.0f".format(Locale.US, box.right)}," +
+                                "${"%.0f".format(Locale.US, box.bottom)}] " +
+                                "survived=${candidate.survivedFilter}",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                }
+            }
+        }
 
         // Asset Placement Guide Card
         Card(
@@ -343,3 +441,13 @@ private fun DiagnosticsRow(label: String, value: String) {
         )
     }
 }
+
+@Composable
+private fun MetricRow(label: String, summary: com.example.chipvision.engine.MetricSummary) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        DiagnosticsRow("$label (n=${summary.count})", "${formatMetric(summary.averageMs)} ms avg")
+        DiagnosticsRow("  p95 / max", "${formatMetric(summary.p95Ms)} / ${summary.maximumMs} ms")
+    }
+}
+
+private fun formatMetric(value: Double): String = "%.1f".format(Locale.US, value)

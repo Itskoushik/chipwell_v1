@@ -20,8 +20,8 @@ import com.example.chipvision.data.model.TrackedCandidate
 @Composable
 fun BoundingBoxOverlay(
     candidates: List<TrackedCandidate>,
-    frameWidth: Float = 1080f,
-    frameHeight: Float = 1920f,
+    frameWidth: Float,
+    frameHeight: Float,
     showConfidenceLabels: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -31,6 +31,7 @@ fun BoundingBoxOverlay(
             .testTag("bounding_box_overlay")
     ) {
         if (candidates.isEmpty()) return@Canvas
+        if (frameWidth <= 0f || frameHeight <= 0f) return@Canvas
 
         val canvasW = size.width
         val canvasH = size.height
@@ -48,9 +49,6 @@ fun BoundingBoxOverlay(
         val strokeWidth = 3.5.dp.toPx()
 
         for (candidate in candidates) {
-            // Strictly enforce: only stable candidates have overlays (Section 7)
-            if (!candidate.isStable) continue
-
             val box = candidate.boundingBox
             val left = (box.left * scale) + offsetX
             val top = (box.top * scale) + offsetY
@@ -65,11 +63,16 @@ fun BoundingBoxOverlay(
 
             // Color specification:
             // Green: correctly upward chip
-            // Red: confirmed empty impression, downward chip, or flipped chip
-            // Neutral: stable chip awaiting classification
+            // Yellow: validated empty impression; red: failed chip classification
+            // Neutral: live chip awaiting classification
             val (boxColor, labelText) = when {
                 candidate.isEmptyImpression -> {
-                    Pair(Color(0xFFE53935), "EMPTY IMPRESSION")
+                    val confText = if (showConfidenceLabels) {
+                        " (${(candidate.confidence * 100).toInt()}%)"
+                    } else {
+                        ""
+                    }
+                    Pair(Color(0xFFFFC107), "EMPTY$confText")
                 }
                 cls == null -> {
                     Pair(Color(0xFFFFB300), "Awaiting Classification")

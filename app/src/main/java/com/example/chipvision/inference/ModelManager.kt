@@ -209,17 +209,32 @@ class ModelManager(private val context: Context) {
             val inShapeStr = inShape.contentToString()
             val inType = inTensor.dataType().name
             val inQuant = inTensor.quantizationParams()
+            if (inType != "FLOAT32") {
+                interp.close()
+                throw IllegalStateException("Unsupported input tensor type $inType; expected FLOAT32")
+            }
 
-            var nchw = true
-            var inputDim = defaultInputDim
-            if (inShape.size == 4) {
-                if (inShape[1] == 3) {
-                    nchw = true
-                    inputDim = inShape[2]
-                } else if (inShape[3] == 3) {
-                    nchw = false
-                    inputDim = inShape[1]
-                }
+            val nchw: Boolean
+            val inputDim: Int
+            if (inShape.size != 4) {
+                interp.close()
+                throw IllegalStateException("Unsupported input rank ${inShape.contentToString()}; expected rank 4")
+            } else if (inShape[1] == 3 && inShape[2] == inShape[3]) {
+                nchw = true
+                inputDim = inShape[2]
+            } else if (inShape[3] == 3 && inShape[1] == inShape[2]) {
+                nchw = false
+                inputDim = inShape[1]
+            } else {
+                interp.close()
+                throw IllegalStateException("Unsupported input shape ${inShape.contentToString()}; expected square RGB tensor")
+            }
+            if (inputDim != defaultInputDim) {
+                interp.close()
+                throw IllegalStateException(
+                    "Unexpected ${if (isDetector) "detector" else "classifier"} input size $inputDim; " +
+                        "expected $defaultInputDim"
+                )
             }
 
             if (isDetector) {

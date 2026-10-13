@@ -97,13 +97,13 @@ fun SettingsScreen(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "${(settings.detectorThreshold * 100).roundToInt()}% (> 0.85)",
+                        text = "${(settings.detectorThreshold * 100).roundToInt()}% (>= threshold)",
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
                     )
                 }
                 Text(
-                    text = "A detection is eligible only when confidence is strictly greater than threshold.",
+                    text = "A detection is eligible when confidence is at least the configured threshold.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -208,13 +208,13 @@ fun SettingsScreen(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "${settings.stabilityDurationMs} ms (1.5s)",
+                        text = "${settings.stabilityDurationMs} ms (0.2s)",
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
                     )
                 }
                 Text(
-                    text = "Candidate boxes and global scene must remain geometrically stable for 1.5 seconds.",
+                    text = "Camera must remain stable for 0.2 seconds before inspection.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -270,6 +270,48 @@ fun SettingsScreen(
                     fontWeight = FontWeight.Bold
                 )
             }
+
+            Text(
+                text = "Movement center tolerance",
+                style = MaterialTheme.typography.bodyMedium
+            )
+            SliderWithStepControls(
+                value = settings.movementCenterToleranceRatio,
+                onValueChange = { newVal ->
+                    val rounded = (newVal * 100).roundToInt() / 100f
+                    viewModel.updateSettings { it.copy(movementCenterToleranceRatio = rounded) }
+                },
+                valueRange = 0.02f..0.25f,
+                step = 0.01f,
+                testTagPrefix = "movement_center_tolerance"
+            )
+
+            Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Movement IoU tolerance",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Text(
+                    text = "${(settings.movementIouTolerance * 100).roundToInt()}%",
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            SliderWithStepControls(
+                value = settings.movementIouTolerance,
+                onValueChange = { newVal ->
+                    val rounded = (newVal * 100).roundToInt() / 100f
+                    viewModel.updateSettings { it.copy(movementIouTolerance = rounded) }
+                },
+                valueRange = 0.50f..0.95f,
+                step = 0.05f,
+                testTagPrefix = "movement_iou_tolerance"
+            )
 
             Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
 

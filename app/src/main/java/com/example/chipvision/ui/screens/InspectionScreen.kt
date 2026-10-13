@@ -79,9 +79,9 @@ fun InspectionScreen(
     val visibleCandidates by viewModel.visibleCandidates.collectAsState()
     val currentDecision by viewModel.currentDecision.collectAsState()
     val cumulativeStats by viewModel.cumulativeStats.collectAsState()
-    val frameStats by viewModel.currentFrameStats.collectAsState()
     val isStopped by viewModel.isStopped.collectAsState()
     val settings by viewModel.settings.collectAsState()
+    val cameraFrameSize by viewModel.cameraFrameSize.collectAsState()
 
     var hasCameraPermission by remember {
         mutableStateOf(
@@ -110,6 +110,7 @@ fun InspectionScreen(
     DisposableEffect(lifecycleOwner) {
         onDispose {
             cameraController?.release()
+            viewModel.clearCameraFrameSize()
         }
     }
 
@@ -157,6 +158,8 @@ fun InspectionScreen(
                 // Live Bounding Box Overlay for STABLE accepted candidates only
                 BoundingBoxOverlay(
                     candidates = visibleCandidates,
+                    frameWidth = cameraFrameSize.first.toFloat(),
+                    frameHeight = cameraFrameSize.second.toFloat(),
                     showConfidenceLabels = settings.showConfidenceLabels,
                     modifier = Modifier.fillMaxSize()
                 )
@@ -208,13 +211,6 @@ fun InspectionScreen(
                     .padding(8.dp)
             )
 
-            // Current Frame stats badge at bottom of preview
-            CurrentFrameStatsOverlay(
-                frameStats = frameStats,
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(8.dp)
-            )
         }
 
         // Summary and Controls bottom panel
@@ -302,7 +298,7 @@ fun InspectionScreen(
         AlertDialog(
             onDismissRequest = { showClearStatsDialog = false },
             title = { Text("Clear Statistics?") },
-            text = { Text("This will reset cumulative PASS, FAIL, and chip counter tallies to zero. Inspection history log will be preserved.") },
+            text = { Text("This will reset cumulative PASS and FAIL inspection tallies to zero. Inspection history log will be preserved.") },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -427,42 +423,6 @@ fun InspectionStateBanner(
                     fontWeight = FontWeight.SemiBold
                 )
             }
-        }
-    }
-}
-
-@Composable
-fun CurrentFrameStatsOverlay(
-    frameStats: com.example.chipvision.data.model.CurrentFrameStats,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        color = Color.Black.copy(alpha = 0.70f),
-        shape = RoundedCornerShape(8.dp),
-        modifier = modifier
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text(
-                text = "Chips: ${frameStats.detectedChips}",
-                color = Color.White,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium
-            )
-            Text(
-                text = "Empty: ${frameStats.emptyImpressions}",
-                color = if (frameStats.emptyImpressions > 0) Color(0xFFFF5252) else Color.White,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium
-            )
-            Text(
-                text = "Upward: ${frameStats.upwardChips}",
-                color = Color(0xFF69F0AE),
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium
-            )
         }
     }
 }

@@ -10,19 +10,27 @@ import android.os.Vibrator
 import android.speech.tts.TextToSpeech
 import android.util.Log
 import com.example.chipvision.data.preferences.InspectionSettings
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import android.os.SystemClock
 import java.util.Locale
 import kotlin.math.sin
+
+object InspectionResultAnnouncement {
+    const val PASS = "Pass"
+    const val FAIL = "Fail"
+}
 
 class AudioAlertManager(private val context: Context) : TextToSpeech.OnInitListener {
 
     private val tag = "AudioAlertManager"
     private val scope = CoroutineScope(Dispatchers.Default)
     private var alertJob: Job? = null
+    private val failureBeepLoop = FailureBeepLoopState()
 
     private var tts: TextToSpeech? = null
     private var isTtsReady = false
@@ -52,46 +60,71 @@ class AudioAlertManager(private val context: Context) : TextToSpeech.OnInitListe
         if (!settings.passAudioEnabled && !settings.voiceEnabled) return
 
         alertJob?.cancel()
+        failureBeepLoop.stop()
         alertJob = scope.launch {
             if (settings.voiceEnabled && isTtsReady) {
-                speakText("Pass")
+                speakText(InspectionResultAnnouncement.PASS)
             } else if (settings.passAudioEnabled) {
                 playBuzzerPattern(freqHz = 1600, count = 1, gapMs = 50, volume = settings.buzzerVolume)
             }
         }
     }
 
-    fun playFailAlert(message: String, settings: InspectionSettings) {
+    fun playFailAlert(
+        settings: InspectionSettings,
+        repeatDurationMs: Long = 0L
+    ) {
         alertJob?.cancel()
+        failureBeepLoop.stop()
+        val loopStarted = repeatDurationMs > 0L && settings.buzzerEnabled &&
+            failureBeepLoop.start()
         alertJob = scope.launch {
-            // Trigger haptic vibration for industrial feedback
-            triggerVibration()
+            try {
+                triggerVibration()
 
-            // Buzzer alert
-            if (settings.buzzerEnabled) {
-                playBuzzerPattern(
-                    freqHz = settings.buzzerFrequencyHz,
-                    count = settings.beepCount,
-                    gapMs = settings.beepGapMs,
-                    volume = settings.buzzerVolume
-                )
-            }
-
-            // Voice announcement
-            if (settings.voiceEnabled && isTtsReady) {
-                val spoken = when {
-                    message.contains("empty impression", ignoreCase = true) -> "Fail. Empty impression detected."
-                    message.contains("downward", ignoreCase = true) -> "Fail. Downward chip detected."
-                    message.contains("flipped", ignoreCase = true) -> "Fail. Flipped chip detected."
-                    else -> "Fail. Inspection rejected."
+                if (settings.voiceEnabled && isTtsReady) {
+                    speakText(InspectionResultAnnouncement.FAIL)
                 }
-                speakText(spoken)
+
+                if (settings.buzzerEnabled) {
+                    if (loopStarted) {
+                        repeatFailureBuzzer(settings, repeatDurationMs)
+                    } else {
+                        playBuzzerPattern(
+                            freqHz = settings.buzzerFrequencyHz,
+                            count = settings.beepCount,
+                            gapMs = settings.beepGapMs,
+                            volume = settings.buzzerVolume
+                        )
+                    }
+                }
+            } finally {
+                if (loopStarted) {
+                    failureBeepLoop.stop()
+                }
             }
+        }
+    }
+
+    private suspend fun repeatFailureBuzzer(
+        settings: InspectionSettings,
+        repeatDurationMs: Long
+    ) {
+        val deadlineMs = SystemClock.elapsedRealtime() + repeatDurationMs
+        while (SystemClock.elapsedRealtime() < deadlineMs) {
+            playBuzzerPattern(
+                freqHz = settings.buzzerFrequencyHz,
+                count = settings.beepCount,
+                gapMs = settings.beepGapMs,
+                volume = settings.buzzerVolume
+            )
+            delay(1L)
         }
     }
 
     fun testBuzzer(settings: InspectionSettings) {
         alertJob?.cancel()
+        failureBeepLoop.stop()
         alertJob = scope.launch {
             playBuzzerPattern(
                 freqHz = settings.buzzerFrequencyHz,
@@ -104,7 +137,7 @@ class AudioAlertManager(private val context: Context) : TextToSpeech.OnInitListe
 
     fun testVoice() {
         if (isTtsReady) {
-            speakText("Pass")
+            speakText(InspectionResultAnnouncement.PASS)
         }
     }
 
@@ -163,6 +196,8 @@ class AudioAlertManager(private val context: Context) : TextToSpeech.OnInitListe
                 }
             }
             delay(100L)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(tag, "Error playing audio tone", e)
         } finally {
@@ -186,6 +221,7 @@ class AudioAlertManager(private val context: Context) : TextToSpeech.OnInitListe
 
     fun cancel() {
         alertJob?.cancel()
+        failureBeepLoop.stop()
         tts?.stop()
     }
 

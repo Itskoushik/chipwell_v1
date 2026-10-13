@@ -44,7 +44,7 @@ object InspectionDecisionEngine {
             return InspectionDecision(
                 isPass = false,
                 reasonCode = ReasonCode.FAIL_EMPTY_IMPRESSION_PRESENT,
-                message = "FAIL: $emptyCount empty impression(s) detected in scene",
+                message = "FAIL: Empty impression detected in scene",
                 chipCount = candidates.count { it.isChip },
                 emptyCount = emptyCount,
                 chips = emptyList(), // Do not classify or report chip pass/fail when empty impressions exist
@@ -77,7 +77,7 @@ object InspectionDecisionEngine {
             return InspectionDecision(
                 isPass = false,
                 reasonCode = ReasonCode.FAIL_UNRESOLVED_CANDIDATE,
-                message = "FAIL: ${unclassified.size} chip candidate(s) awaiting classification",
+                message = "FAIL: Chip candidate awaiting classification",
                 chipCount = chipCount,
                 emptyCount = 0,
                 timestampMs = now,
@@ -167,7 +167,7 @@ object InspectionDecisionEngine {
         return InspectionDecision(
             isPass = true,
             reasonCode = ReasonCode.PASS_ALL_CHIPS_CORRECT_UPWARD,
-            message = "PASS: All $chipCount chip(s) correctly upward (${chipSummaries.joinToString { it.chipType.displayName }})",
+            message = "PASS: All chips correctly upward (${chipSummaries.joinToString { it.chipType.displayName }})",
             chipCount = chipCount,
             emptyCount = 0,
             chips = chipSummaries,

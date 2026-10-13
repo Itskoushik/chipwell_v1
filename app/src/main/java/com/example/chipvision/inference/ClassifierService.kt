@@ -18,8 +18,6 @@ class ClassifierService(private val modelManager: ModelManager) {
     private var lastInputSize: Int = 0
     private var lastNchw: Boolean = false
 
-    private val outputArray = Array(1) { FloatArray(6) }
-
     companion object {
         val CLASS_LABELS = arrayOf(
             "PCS_06_K_correct_upward", // 0
@@ -119,6 +117,20 @@ class ClassifierService(private val modelManager: ModelManager) {
             }
         }
 
+        val outputShape = interpreter.getOutputTensor(0).shape()
+        if (outputShape.size != 2 || outputShape[0] != 1 || outputShape[1] != CLASS_LABELS.size) {
+            Log.e(tag, "Unsupported classifier output shape: ${outputShape.contentToString()}")
+            return ChipClassification(
+                chipType = ChipType.UNKNOWN,
+                orientation = ChipOrientation.UNCERTAIN,
+                classIndex = -1,
+                label = "Unsupported Output Shape",
+                confidence = 0f,
+                isAccepted = false
+            )
+        }
+        val outputArray = Array(1) { FloatArray(outputShape[1]) }
+
         try {
             interpreter.run(byteBuffer, outputArray)
         } catch (e: Exception) {
@@ -134,7 +146,16 @@ class ClassifierService(private val modelManager: ModelManager) {
         }
 
         val rawScores = outputArray[0]
-        val probabilities = normalizeScoresToProbabilities(rawScores)
+        val outputSum = rawScores.sum()
+        val isProbabilityOutput = rawScores.all { it.isFinite() && it >= 0f && it <= 1f } &&
+            kotlin.math.abs(outputSum - 1f) <= 0.01f
+        val probabilities = if (isProbabilityOutput) rawScores.copyOf() else softmax(rawScores)
+        Log.i(
+            tag,
+            "Classifier output=${rawScores.contentToString()} outputMode=" +
+                "${if (isProbabilityOutput) "probabilities" else "logits"} " +
+                "probabilities=${probabilities.contentToString()}"
+        )
 
         var bestIndex = 0
         var maxProb = -1f
@@ -160,20 +181,7 @@ class ClassifierService(private val modelManager: ModelManager) {
         )
     }
 
-    private fun normalizeScoresToProbabilities(scores: FloatArray): FloatArray {
-        var sum = 0f
-        var hasNegative = false
-        for (s in scores) {
-            sum += s
-            if (s < 0f) hasNegative = true
-        }
-
-        // If scores already resemble softmax distribution (all positive and sum ~ 1.0)
-        if (!hasNegative && sum in 0.90f..1.10f) {
-            return scores
-        }
-
-        // Apply numerically stable softmax
+    private fun softmax(scores: FloatArray): FloatArray {
         var maxScore = Float.NEGATIVE_INFINITY
         for (s in scores) {
             if (s > maxScore) maxScore = s

@@ -24,6 +24,7 @@ class CameraController(
     private var cameraExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     private val isProcessingFrame = AtomicBoolean(false)
     private var cameraProvider: ProcessCameraProvider? = null
+    private var analyzerFrameCount = 0L
 
     fun startCamera(
         lifecycleOwner: LifecycleOwner,
@@ -67,6 +68,15 @@ class CameraController(
 
     private fun processImageProxy(imageProxy: ImageProxy) {
         try {
+            analyzerFrameCount++
+            if (analyzerFrameCount == 1L || analyzerFrameCount % 30L == 0L) {
+                Log.i(
+                    "CHIPVISION_CAMERA",
+                    "Analyzer frame=$analyzerFrameCount size=${imageProxy.width}x${imageProxy.height} " +
+                        "format=${imageProxy.format} rotation=${imageProxy.imageInfo.rotationDegrees} " +
+                        "busy=${isProcessingFrame.get()}"
+                )
+            }
             // Drop frame if previous inference is still busy to guarantee real-time performance and prevent backlog
             if (isProcessingFrame.compareAndSet(false, true)) {
                 val rotationDegrees = imageProxy.imageInfo.rotationDegrees

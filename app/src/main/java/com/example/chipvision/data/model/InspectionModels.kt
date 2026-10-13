@@ -47,7 +47,8 @@ data class TrackedCandidate(
     val stabilityStartMs: Long?,
     val isStable: Boolean,
     val classification: ChipClassification? = null,
-    val sessionId: String
+    val sessionId: String,
+    val movementEvidenceFrames: Int = 0
 ) {
     val isChip: Boolean get() = classId == 0
     val isEmptyImpression: Boolean get() = classId == 1
@@ -120,5 +121,10 @@ data class CurrentFrameStats(
     val upwardChips: Int = 0,
     val downwardChips: Int = 0,
     val flippedChips: Int = 0,
-    val emptyImpressions: Int = 0
+    val emptyImpressions: Int = 0,
+    val rawDetectorPredictions: Int = 0,
+    val confidenceEligibleDetections: Int = 0,
+    val acceptedDetections: Int = 0,
+    val rejectedUndersizedDetections: Int = 0,
+    val liveCandidates: Int = 0
 )

@@ -10,8 +10,8 @@ CHIPVISION is an industrial-grade automated vision inspection application for el
    - The live camera feed observes the conveyor continuously.
    - The operator moves the physical conveyor with the paddle; CHIPVISION automatically locks onto each new stationary scene and conducts the inspection cycle without requiring manual Start presses after every cycle.
 
-2. **1.5-Second Active Observation Stability Validation**
-   - Candidates must maintain strict geometric stability (width/height ratio $\le 20\%$, $\text{IoU} \ge 0.80$, center displacement) and global scene stability for at least **1500 ms** uninterrupted.
+2. **200 ms Camera Stability Validation**
+   - Camera-motion analysis must confirm continuous camera stability for exactly **200 ms (0.2 seconds)** before inspection finalization.
    - Any conveyor or scene motion instantly resets the stability interval, invalidates pending crops, and hides affected candidates.
 
 3. **Completely Hidden Unstable Overlays**

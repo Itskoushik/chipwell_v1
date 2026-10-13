@@ -267,26 +267,11 @@ fun InspectionRecordCard(
                 )
 
                 Spacer(modifier = Modifier.height(4.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(
-                        text = "Chips: ${record.chipCount}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    if (record.emptyCount > 0) {
-                        Text(
-                            text = "Empty: ${record.emptyCount}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color(0xFFC62828),
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                    Text(
-                        text = record.reasonCode,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.outline
-                    )
-                }
+                Text(
+                    text = record.reasonCode,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.outline
+                )
             }
         }
     }
@@ -332,10 +317,6 @@ fun InspectionDetailDialog(
                 Text(
                     text = "Message: ${record.message}",
                     style = MaterialTheme.typography.bodyMedium
-                )
-                Text(
-                    text = "Valid Chips: ${record.chipCount} | Empty Impressions: ${record.emptyCount}",
-                    style = MaterialTheme.typography.bodySmall
                 )
                 Text(
                     text = "Session ID: ${record.sessionId}",

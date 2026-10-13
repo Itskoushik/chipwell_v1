@@ -47,18 +47,14 @@ class NavigationAndModelTest {
     }
 
     @Test
-    fun testModelManagerDiagnostics_whenAssetsNotPresent() {
+    fun testModelAssetsArePresent() {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        val modelManager = ModelManager(context)
-
-        val diagnostics = modelManager.initialize()
-
-        // When physical models are not yet deployed in assets, the manager must report failure/missing gracefully
-        assertFalse("Cannot report all models loaded when files are missing", diagnostics.allModelsLoaded)
-        assertFalse("Detector cannot report loaded when file is missing", diagnostics.detectorLoaded)
-        assertFalse("Classifier cannot report loaded when file is missing", diagnostics.classifierLoaded)
-        assertTrue("Detector error must be reported", diagnostics.detectorError != null)
-        assertTrue("Classifier error must be reported", diagnostics.classifierError != null)
+        context.assets.open(ModelManager.DETECTOR_FILE_NAME).use { detector ->
+            assertTrue("Detector model must be packaged and non-empty", detector.available() > 0)
+        }
+        context.assets.open(ModelManager.CLASSIFIER_FILE_NAME).use { classifier ->
+            assertTrue("Classifier model must be packaged and non-empty", classifier.available() > 0)
+        }
     }
 
     @Test

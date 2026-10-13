@@ -77,7 +77,11 @@ class ChipVisionViewModel(application: Application) : AndroidViewModel(applicati
     val currentDecision = coordinator.currentDecision
     val cumulativeStats = coordinator.cumulativeStats
     val currentFrameStats = coordinator.currentFrameStats
+    private val _cameraFrameSize = MutableStateFlow(0 to 0)
+    val cameraFrameSize: StateFlow<Pair<Int, Int>> = _cameraFrameSize.asStateFlow()
     val diagnostics = coordinator.diagnostics
+    val performance = coordinator.performance
+    val duplicateEvidence = coordinator.duplicateEvidence
     val isStopped = coordinator.isStopped
 
     val historyRecords: StateFlow<List<InspectionRecord>> = inspectionDao.getAllRecords().stateIn(
@@ -180,10 +184,15 @@ class ChipVisionViewModel(application: Application) : AndroidViewModel(applicati
 
     fun onCameraFrame(bitmap: Bitmap, onFrameHandled: () -> Unit) {
         try {
+            _cameraFrameSize.value = bitmap.width to bitmap.height
             coordinator.processFrame(bitmap, settings.value)
         } finally {
             onFrameHandled()
         }
+    }
+
+    fun clearCameraFrameSize() {
+        _cameraFrameSize.value = 0 to 0
     }
 
     fun startInspection() {
@@ -192,6 +201,10 @@ class ChipVisionViewModel(application: Application) : AndroidViewModel(applicati
 
     fun stopInspection() {
         coordinator.stopSession()
+    }
+
+    fun setDuplicateDiagnosticsSampling(sampleEveryNFrames: Long) {
+        coordinator.setDuplicateDiagnosticsSampling(sampleEveryNFrames)
     }
 
     fun resumeInspection() {

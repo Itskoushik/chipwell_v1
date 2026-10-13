@@ -2,6 +2,7 @@ package com.example.chipvision.tracking
 
 import android.graphics.RectF
 import android.os.SystemClock
+import android.util.Log
 import com.example.chipvision.data.model.Detection
 import com.example.chipvision.data.model.TrackedCandidate
 import com.example.chipvision.data.preferences.InspectionSettings
@@ -15,6 +16,17 @@ class DetectionTracker {
 
     fun reset() {
         activeTracks.clear()
+    }
+
+    fun activeTrackCount(): Int = activeTracks.size
+
+    fun renderableTracks(
+        currentTimeMs: Long,
+        trackingTimeoutMs: Long
+    ): List<TrackedCandidate> {
+        return activeTracks.values.filter {
+            currentTimeMs - it.lastSeenMs <= trackingTimeoutMs
+        }
     }
 
     /**
@@ -40,7 +52,7 @@ class DetectionTracker {
 
         // Greedily match existing tracks with current detections
         for ((trackId, track) in activeTracks) {
-            var bestIou = 0f
+            var bestScore = Float.NEGATIVE_INFINITY
             var bestDetectionIndex = -1
 
             for (i in detections.indices) {
@@ -57,9 +69,14 @@ class DetectionTracker {
                 val maxDim = maxOf(track.boundingBox.width(), track.boundingBox.height())
                 val isNearby = centerDist <= (maxDim * 0.5f)
 
-                if ((iou >= 0.30f || isNearby) && iou > bestIou) {
-                    bestIou = iou
-                    bestDetectionIndex = i
+                if (iou >= 0.30f || isNearby) {
+                    // Prefer overlap, while still allowing a nearby detection whose
+                    // box moved between frames to retain the existing track.
+                    val score = iou + if (isNearby) 0.01f else 0f
+                    if (score > bestScore) {
+                        bestScore = score
+                        bestDetectionIndex = i
+                    }
                 }
             }
 
@@ -75,13 +92,26 @@ class DetectionTracker {
                 val widthRatio = if (prevBox.width() > 0) kotlin.math.abs(newBox.width() - prevBox.width()) / prevBox.width() else 1f
                 val heightRatio = if (prevBox.height() > 0) kotlin.math.abs(newBox.height() - prevBox.height()) / prevBox.height() else 1f
                 val iou = calculateIoU(prevBox, newBox)
-
+                val centerDisplacement = calculateCenterDistance(prevBox, newBox)
+                val referenceDimension = maxOf(prevBox.width(), prevBox.height(), 1f)
+                val centerDisplacementRatio = centerDisplacement / referenceDimension
+                val isWithinMovementTolerance =
+                    centerDisplacementRatio <= settings.movementCenterToleranceRatio &&
+                        iou >= settings.movementIouTolerance
                 val isGeometricallyStable = (widthRatio <= settings.maxWidthChangeRatio) &&
                         (heightRatio <= settings.maxHeightChangeRatio) &&
-                        (iou >= settings.minStableBoxIou)
+                        iou >= settings.minStableBoxIou &&
+                        isWithinMovementTolerance
+                val movementEvidenceFrames = if (isWithinMovementTolerance) {
+                    0
+                } else {
+                    track.movementEvidenceFrames + 1
+                }
+                val movementConfirmed =
+                    movementEvidenceFrames >= settings.movementConfirmationFrames
 
                 val stabilityStart = when {
-                    !isGeometricallyStable -> currentTimeMs // Reset stability timer on sudden box jump
+                    movementConfirmed -> currentTimeMs
                     track.stabilityStartMs == null -> currentTimeMs
                     else -> track.stabilityStartMs
                 }
@@ -90,7 +120,18 @@ class DetectionTracker {
                 val isConfirmedStable = stableDuration >= settings.stabilityDurationMs
 
                 // If candidate moved significantly and had a previous classification, invalidate it
-                val classification = if (!isGeometricallyStable) null else track.classification
+                val classification = if (movementConfirmed) null else track.classification
+
+                if (!isWithinMovementTolerance || movementConfirmed) {
+                    Log.d(
+                        "CHIPVISION_MOVEMENT",
+                        "track=$trackId displacementRatio=${"%.4f".format(centerDisplacementRatio)} " +
+                            "iou=${"%.3f".format(iou)} tolerance=${settings.movementCenterToleranceRatio} " +
+                            "iouTolerance=${settings.movementIouTolerance} " +
+                            "evidence=$movementEvidenceFrames/${settings.movementConfirmationFrames} " +
+                            "confirmed=$movementConfirmed"
+                    )
+                }
 
                 activeTracks[trackId] = track.copy(
                     boundingBox = newBox,
@@ -99,7 +140,8 @@ class DetectionTracker {
                     stabilityStartMs = stabilityStart,
                     isStable = isConfirmedStable,
                     classification = classification,
-                    sessionId = sessionId
+                    sessionId = sessionId,
+                    movementEvidenceFrames = movementEvidenceFrames
                 )
             }
         }
@@ -107,9 +149,10 @@ class DetectionTracker {
         // 3. Any active track that was not matched in this frame has its stability invalidated
         for ((trackId, track) in activeTracks) {
             if (trackId !in matchedTrackIds) {
-                // Not seen in this frame: cannot confirm stability
+                // Preserve the stability start through a brief detector miss. The coordinator
+                // clears the live overlay, while trackingTimeoutMs determines when the track is
+                // genuinely gone and should re-arm inspection.
                 activeTracks[trackId] = track.copy(
-                    stabilityStartMs = currentTimeMs,
                     isStable = false
                 )
             }
@@ -130,7 +173,8 @@ class DetectionTracker {
                     stabilityStartMs = currentTimeMs,
                     isStable = false, // Newly detected candidate starts with fresh stability history
                     classification = null,
-                    sessionId = sessionId
+                    sessionId = sessionId,
+                    movementEvidenceFrames = 0
                 )
             }
         }
@@ -143,12 +187,30 @@ class DetectionTracker {
         activeTracks[trackId] = existing.copy(classification = classification)
     }
 
+    fun removeTracksForDetections(detections: List<Detection>, classId: Int) {
+        if (detections.isEmpty()) return
+        val trackIds = activeTracks.filter { (_, track) ->
+            track.classId == classId && detections.any { detection ->
+                calculateIoU(track.boundingBox, detection.boundingBox) >= 0.8f
+            }
+        }.keys
+        trackIds.forEach(activeTracks::remove)
+    }
+
+    fun clearTracksForClass(classId: Int) {
+        activeTracks
+            .filterValues { it.classId == classId }
+            .keys
+            .forEach(activeTracks::remove)
+    }
+
     fun invalidateAllStability(currentTimeMs: Long = SystemClock.elapsedRealtime()) {
         for ((id, track) in activeTracks) {
             activeTracks[id] = track.copy(
                 stabilityStartMs = currentTimeMs,
                 isStable = false,
-                classification = null
+                classification = null,
+                movementEvidenceFrames = 0
             )
         }
     }

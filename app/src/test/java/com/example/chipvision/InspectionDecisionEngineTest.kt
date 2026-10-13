@@ -178,15 +178,14 @@ class InspectionDecisionEngineTest {
         assertEquals(ReasonCode.FAIL_CHIP_FLIPPED, decision.reasonCode)
     }
 
-    // 9. Detector threshold strict rule: confidence exactly 0.85 must be rejected
+    // 9. Detector threshold rule: confidence at the threshold is eligible
     @Test
     fun testDetectorConfidenceExactly85_isRejected() {
-        val threshold = 0.85f
-        val detAt85 = Detection(RectF(0f, 0f, 10f, 10f), 0.85f, 0)
-        val detAbove85 = Detection(RectF(0f, 0f, 10f, 10f), 0.85001f, 0)
-
-        assertFalse("At exactly 0.85 must be rejected", detAt85.confidence > threshold)
-        assertTrue("Above 0.85 must be accepted", detAbove85.confidence > threshold)
+        val threshold = 0.70f
+        val detAtThreshold = Detection(RectF(0f, 0f, 10f, 10f), 0.70f, 0)
+        val detBelowThreshold = Detection(RectF(0f, 0f, 10f, 10f), 0.69999f, 0)
+        assertTrue("At exactly the threshold must be accepted", detAtThreshold.confidence >= threshold)
+        assertFalse("Below the threshold must be rejected", detBelowThreshold.confidence >= threshold)
     }
 
     // 10. Low-confidence or uncertain classification -> FAIL_UNCERTAIN_CLASSIFICATION
