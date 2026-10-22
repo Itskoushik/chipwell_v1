@@ -4,7 +4,7 @@ import android.graphics.RectF
 
 /**
  * Raw detection from the object detector.
- * classId: 0 = chip, 1 = empty
+ * classId: 0 = chip, 1 = marking
  */
 data class Detection(
     val boundingBox: RectF, // Coordinates normalized (0f..1f) or pixel space
@@ -12,30 +12,8 @@ data class Detection(
     val classId: Int
 ) {
     val isChip: Boolean get() = classId == 0
-    val isEmptyImpression: Boolean get() = classId == 1
+    val isMarking: Boolean get() = classId == 1
 }
-
-enum class ChipType(val displayName: String) {
-    PCS_06_K("PCS.06.K"),
-    PCS_26_C("PCS.26.C"),
-    UNKNOWN("Unknown")
-}
-
-enum class ChipOrientation(val displayName: String, val isPass: Boolean) {
-    CORRECT_UPWARD("Correct Upward", true),
-    DOWNWARD("Downward", false),
-    FLIPPED("Flipped", false),
-    UNCERTAIN("Uncertain", false)
-}
-
-data class ChipClassification(
-    val chipType: ChipType,
-    val orientation: ChipOrientation,
-    val classIndex: Int,
-    val label: String,
-    val confidence: Float,
-    val isAccepted: Boolean
-)
 
 data class TrackedCandidate(
     val trackId: Long,
@@ -46,12 +24,11 @@ data class TrackedCandidate(
     val lastSeenMs: Long,
     val stabilityStartMs: Long?,
     val isStable: Boolean,
-    val classification: ChipClassification? = null,
     val sessionId: String,
     val movementEvidenceFrames: Int = 0
 ) {
     val isChip: Boolean get() = classId == 0
-    val isEmptyImpression: Boolean get() = classId == 1
+    val isMarking: Boolean get() = classId == 1
 }
 
 enum class InspectionStatus(val displayName: String) {
@@ -61,8 +38,7 @@ enum class InspectionStatus(val displayName: String) {
     DETECTING("Detecting"),
     WAITING_FOR_STABILITY("Waiting for stability"),
     STABLE_SCENE_READY("Validating scene stability"),
-    CHECKING_EMPTY_IMPRESSIONS("Checking empty impressions"),
-    CLASSIFYING("Classifying chips"),
+    EVALUATING("Evaluating chips and markings"),
     FINALIZING("Finalizing"),
     PASS("PASS"),
     FAIL("FAIL"),
@@ -71,25 +47,10 @@ enum class InspectionStatus(val displayName: String) {
 }
 
 enum class ReasonCode(val code: String, val isFail: Boolean) {
-    PASS_ALL_CHIPS_CORRECT_UPWARD("PASS_ALL_CHIPS_CORRECT_UPWARD", false),
-    FAIL_EMPTY_IMPRESSION_PRESENT("FAIL_EMPTY_IMPRESSION_PRESENT", true),
-    FAIL_CHIP_DOWNWARD("FAIL_CHIP_DOWNWARD", true),
-    FAIL_CHIP_FLIPPED("FAIL_CHIP_FLIPPED", true),
-    FAIL_UNCERTAIN_CLASSIFICATION("FAIL_UNCERTAIN_CLASSIFICATION", true),
+    PASS_SINGLE_MODEL("PASS_SINGLE_MODEL", false),
+    FAIL_MARKING_RULE("FAIL_MARKING_RULE", true),
     FAIL_NO_VALID_CHIPS("FAIL_NO_VALID_CHIPS", true),
-    FAIL_UNRESOLVED_CANDIDATE("FAIL_UNRESOLVED_CANDIDATE", true),
-    FAIL_INFERENCE_ERROR("FAIL_INFERENCE_ERROR", true),
-    FAIL_STABILITY_TIMEOUT("FAIL_STABILITY_TIMEOUT", true),
-    FAIL_SESSION_INVALIDATED("FAIL_SESSION_INVALIDATED", true)
 }
-
-data class ChipSummary(
-    val trackId: Long,
-    val chipType: ChipType,
-    val orientation: ChipOrientation,
-    val confidence: Float,
-    val isCorrectUpward: Boolean
-)
 
 data class InspectionDecision(
     val isPass: Boolean,
@@ -97,10 +58,10 @@ data class InspectionDecision(
     val message: String,
     val chipCount: Int,
     val emptyCount: Int,
-    val chips: List<ChipSummary> = emptyList(),
     val timestampMs: Long = System.currentTimeMillis(),
     val sessionId: String = "",
-    val snapshotId: String = ""
+    val snapshotId: String = "",
+    val inspectionDetailsJson: String = ""
 )
 
 data class CumulativeStats(

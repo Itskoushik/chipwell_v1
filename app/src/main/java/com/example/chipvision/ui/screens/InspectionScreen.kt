@@ -57,14 +57,18 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.chipvision.camera.CameraController
 import com.example.chipvision.data.model.InspectionStatus
+import com.example.chipvision.engine.InspectionResultDelay
 import com.example.chipvision.ui.ChipVisionViewModel
 import com.example.chipvision.ui.components.BoundingBoxOverlay
+import com.example.chipvision.ui.components.InspectionRoiOverlay
+import kotlinx.coroutines.delay
 
 @Composable
 fun InspectionScreen(
@@ -106,6 +110,20 @@ fun InspectionScreen(
 
     var cameraController by remember { mutableStateOf<CameraController?>(null) }
     var showClearStatsDialog by remember { mutableStateOf(false) }
+    var shownResultSnapshotId by remember { mutableStateOf<String?>(null) }
+    var showInspectionResult by remember { mutableStateOf(false) }
+
+    LaunchedEffect(currentDecision?.snapshotId) {
+        val decision = currentDecision
+        if (decision != null && decision.snapshotId != shownResultSnapshotId) {
+            shownResultSnapshotId = decision.snapshotId
+            showInspectionResult = true
+            delay(InspectionResultDelay.popupDurationForDecision(decision))
+            if (currentDecision?.snapshotId == decision.snapshotId) {
+                showInspectionResult = false
+            }
+        }
+    }
 
     DisposableEffect(lifecycleOwner) {
         onDispose {
@@ -160,7 +178,12 @@ fun InspectionScreen(
                     candidates = visibleCandidates,
                     frameWidth = cameraFrameSize.first.toFloat(),
                     frameHeight = cameraFrameSize.second.toFloat(),
-                    showConfidenceLabels = settings.showConfidenceLabels,
+                    modifier = Modifier.fillMaxSize()
+                )
+                InspectionRoiOverlay(
+                    roi = settings.inspectionRoi,
+                    frameWidth = cameraFrameSize.first.toFloat(),
+                    frameHeight = cameraFrameSize.second.toFloat(),
                     modifier = Modifier.fillMaxSize()
                 )
             } else {
@@ -317,6 +340,24 @@ fun InspectionScreen(
             }
         )
     }
+
+    if (showInspectionResult && currentDecision != null) {
+        Dialog(onDismissRequest = { showInspectionResult = false }) {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surface,
+                modifier = Modifier.testTag("inspection_result_popup")
+            ) {
+                Text(
+                    text = if (currentDecision!!.isPass) "PASS" else "FAIL",
+                    modifier = Modifier.padding(horizontal = 36.dp, vertical = 28.dp),
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = if (currentDecision!!.isPass) Color(0xFF2E7D32) else Color(0xFFC62828)
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -383,8 +424,7 @@ fun InspectionStateBanner(
         InspectionStatus.ERROR -> Triple(Color(0xFFD32F2F), Color.White, Icons.Default.Warning)
         InspectionStatus.WAITING_FOR_STABILITY,
         InspectionStatus.STABLE_SCENE_READY,
-        InspectionStatus.CHECKING_EMPTY_IMPRESSIONS,
-        InspectionStatus.CLASSIFYING,
+        InspectionStatus.EVALUATING,
         InspectionStatus.FINALIZING -> Triple(Color(0xFF0277BD), Color.White, Icons.Default.Info)
         InspectionStatus.STOPPED -> Triple(Color(0xFF616161), Color.White, Icons.Default.Stop)
         else -> Triple(Color(0xFF37474F), Color.White, Icons.Default.Info)

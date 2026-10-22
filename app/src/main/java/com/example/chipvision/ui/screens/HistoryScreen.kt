@@ -325,7 +325,7 @@ fun InspectionDetailDialog(
                 )
                 if (record.chipDetailsJson.isNotBlank()) {
                     Text(
-                        text = "Classification Details:\n${record.chipDetailsJson}",
+                        text = "Inspection Details:\n${record.chipDetailsJson}",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

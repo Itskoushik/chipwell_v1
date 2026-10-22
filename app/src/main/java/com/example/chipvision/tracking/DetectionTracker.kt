@@ -119,9 +119,6 @@ class DetectionTracker {
                 val stableDuration = currentTimeMs - stabilityStart
                 val isConfirmedStable = stableDuration >= settings.stabilityDurationMs
 
-                // If candidate moved significantly and had a previous classification, invalidate it
-                val classification = if (movementConfirmed) null else track.classification
-
                 if (!isWithinMovementTolerance || movementConfirmed) {
                     Log.d(
                         "CHIPVISION_MOVEMENT",
@@ -139,7 +136,6 @@ class DetectionTracker {
                     lastSeenMs = currentTimeMs,
                     stabilityStartMs = stabilityStart,
                     isStable = isConfirmedStable,
-                    classification = classification,
                     sessionId = sessionId,
                     movementEvidenceFrames = movementEvidenceFrames
                 )
@@ -172,7 +168,6 @@ class DetectionTracker {
                     lastSeenMs = currentTimeMs,
                     stabilityStartMs = currentTimeMs,
                     isStable = false, // Newly detected candidate starts with fresh stability history
-                    classification = null,
                     sessionId = sessionId,
                     movementEvidenceFrames = 0
                 )
@@ -180,11 +175,6 @@ class DetectionTracker {
         }
 
         return activeTracks.values.toList()
-    }
-
-    fun updateClassification(trackId: Long, classification: com.example.chipvision.data.model.ChipClassification) {
-        val existing = activeTracks[trackId] ?: return
-        activeTracks[trackId] = existing.copy(classification = classification)
     }
 
     fun removeTracksForDetections(detections: List<Detection>, classId: Int) {
@@ -209,7 +199,6 @@ class DetectionTracker {
             activeTracks[id] = track.copy(
                 stabilityStartMs = currentTimeMs,
                 isStable = false,
-                classification = null,
                 movementEvidenceFrames = 0
             )
         }

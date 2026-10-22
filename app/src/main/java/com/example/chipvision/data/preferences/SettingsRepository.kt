@@ -16,8 +16,7 @@ import kotlinx.coroutines.flow.map
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "chipvision_settings")
 
 data class InspectionSettings(
-    val detectorThreshold: Float = 0.70f,
-    val classifierThreshold: Float = 0.70f,
+    val inspectionRoi: InspectionRoi = InspectionRoi.DEFAULT,
     val stabilityDurationMs: Long = DEFAULT_STABILITY_DURATION_MS,
     val maxWidthChangeRatio: Float = 0.20f,
     val maxHeightChangeRatio: Float = 0.20f,
@@ -28,7 +27,6 @@ data class InspectionSettings(
     val globalMotionSensitivity: Float = 0.08f,
     val trackingTimeoutMs: Long = 400L,
     val inspectionTimeoutMs: Long = 5000L,
-    val showConfidenceLabels: Boolean = true,
     val buzzerEnabled: Boolean = true,
     val buzzerFrequencyHz: Int = 950, // 950, 1600, or 600
     val beepCount: Int = 2,
@@ -47,8 +45,6 @@ data class InspectionSettings(
 class SettingsRepository(private val context: Context) {
 
     private object PreferencesKeys {
-        val DETECTOR_THRESHOLD = floatPreferencesKey("detector_threshold")
-        val CLASSIFIER_THRESHOLD = floatPreferencesKey("classifier_threshold")
         val STABILITY_DURATION_MS = longPreferencesKey("stability_duration_ms")
         val MAX_WIDTH_CHANGE_RATIO = floatPreferencesKey("max_width_change_ratio")
         val MAX_HEIGHT_CHANGE_RATIO = floatPreferencesKey("max_height_change_ratio")
@@ -59,7 +55,6 @@ class SettingsRepository(private val context: Context) {
         val GLOBAL_MOTION_SENSITIVITY = floatPreferencesKey("global_motion_sensitivity")
         val TRACKING_TIMEOUT_MS = longPreferencesKey("tracking_timeout_ms")
         val INSPECTION_TIMEOUT_MS = longPreferencesKey("inspection_timeout_ms")
-        val SHOW_CONFIDENCE_LABELS = booleanPreferencesKey("show_confidence_labels")
         val BUZZER_ENABLED = booleanPreferencesKey("buzzer_enabled")
         val BUZZER_FREQ_HZ = intPreferencesKey("buzzer_freq_hz")
         val BEEP_COUNT = intPreferencesKey("beep_count")
@@ -69,12 +64,21 @@ class SettingsRepository(private val context: Context) {
         val VOICE_LOCALE = stringPreferencesKey("voice_locale")
         val PASS_AUDIO_ENABLED = booleanPreferencesKey("pass_audio_enabled")
         val SIMULATION_MODE = booleanPreferencesKey("simulation_mode")
+        val ROI_LEFT = floatPreferencesKey("inspection_roi_left")
+        val ROI_TOP = floatPreferencesKey("inspection_roi_top")
+        val ROI_RIGHT = floatPreferencesKey("inspection_roi_right")
+        val ROI_BOTTOM = floatPreferencesKey("inspection_roi_bottom")
     }
 
     val settingsFlow: Flow<InspectionSettings> = context.dataStore.data.map { preferences ->
+        val roi = InspectionRoi.validatedOrDefault(
+            preferences[PreferencesKeys.ROI_LEFT] ?: InspectionRoi.DEFAULT.left,
+            preferences[PreferencesKeys.ROI_TOP] ?: InspectionRoi.DEFAULT.top,
+            preferences[PreferencesKeys.ROI_RIGHT] ?: InspectionRoi.DEFAULT.right,
+            preferences[PreferencesKeys.ROI_BOTTOM] ?: InspectionRoi.DEFAULT.bottom
+        )
         InspectionSettings(
-            detectorThreshold = preferences[PreferencesKeys.DETECTOR_THRESHOLD] ?: 0.70f,
-            classifierThreshold = preferences[PreferencesKeys.CLASSIFIER_THRESHOLD] ?: 0.70f,
+            inspectionRoi = roi,
             // Stability is camera-only and fixed at the application default.
             // Legacy 500 ms/1500 ms values are not allowed to override it.
             stabilityDurationMs = InspectionSettings.DEFAULT_STABILITY_DURATION_MS,
@@ -87,7 +91,6 @@ class SettingsRepository(private val context: Context) {
             globalMotionSensitivity = preferences[PreferencesKeys.GLOBAL_MOTION_SENSITIVITY] ?: 0.08f,
             trackingTimeoutMs = preferences[PreferencesKeys.TRACKING_TIMEOUT_MS] ?: 400L,
             inspectionTimeoutMs = preferences[PreferencesKeys.INSPECTION_TIMEOUT_MS] ?: 5000L,
-            showConfidenceLabels = preferences[PreferencesKeys.SHOW_CONFIDENCE_LABELS] ?: true,
             buzzerEnabled = preferences[PreferencesKeys.BUZZER_ENABLED] ?: true,
             buzzerFrequencyHz = preferences[PreferencesKeys.BUZZER_FREQ_HZ] ?: 950,
             beepCount = preferences[PreferencesKeys.BEEP_COUNT] ?: 2,
@@ -102,9 +105,14 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun updateSettings(transform: (InspectionSettings) -> InspectionSettings) {
         context.dataStore.edit { preferences ->
+            val storedRoi = InspectionRoi.validatedOrDefault(
+                preferences[PreferencesKeys.ROI_LEFT] ?: InspectionRoi.DEFAULT.left,
+                preferences[PreferencesKeys.ROI_TOP] ?: InspectionRoi.DEFAULT.top,
+                preferences[PreferencesKeys.ROI_RIGHT] ?: InspectionRoi.DEFAULT.right,
+                preferences[PreferencesKeys.ROI_BOTTOM] ?: InspectionRoi.DEFAULT.bottom
+            )
             val current = InspectionSettings(
-                detectorThreshold = preferences[PreferencesKeys.DETECTOR_THRESHOLD] ?: 0.70f,
-                classifierThreshold = preferences[PreferencesKeys.CLASSIFIER_THRESHOLD] ?: 0.70f,
+                inspectionRoi = storedRoi,
                 stabilityDurationMs = InspectionSettings.DEFAULT_STABILITY_DURATION_MS,
                 maxWidthChangeRatio = preferences[PreferencesKeys.MAX_WIDTH_CHANGE_RATIO] ?: 0.20f,
                 maxHeightChangeRatio = preferences[PreferencesKeys.MAX_HEIGHT_CHANGE_RATIO] ?: 0.20f,
@@ -115,7 +123,6 @@ class SettingsRepository(private val context: Context) {
                 globalMotionSensitivity = preferences[PreferencesKeys.GLOBAL_MOTION_SENSITIVITY] ?: 0.08f,
                 trackingTimeoutMs = preferences[PreferencesKeys.TRACKING_TIMEOUT_MS] ?: 400L,
                 inspectionTimeoutMs = preferences[PreferencesKeys.INSPECTION_TIMEOUT_MS] ?: 5000L,
-                showConfidenceLabels = preferences[PreferencesKeys.SHOW_CONFIDENCE_LABELS] ?: true,
                 buzzerEnabled = preferences[PreferencesKeys.BUZZER_ENABLED] ?: true,
                 buzzerFrequencyHz = preferences[PreferencesKeys.BUZZER_FREQ_HZ] ?: 950,
                 beepCount = preferences[PreferencesKeys.BEEP_COUNT] ?: 2,
@@ -127,8 +134,7 @@ class SettingsRepository(private val context: Context) {
                 simulationMode = preferences[PreferencesKeys.SIMULATION_MODE] ?: false
             )
             val updated = transform(current)
-            preferences[PreferencesKeys.DETECTOR_THRESHOLD] = updated.detectorThreshold
-            preferences[PreferencesKeys.CLASSIFIER_THRESHOLD] = updated.classifierThreshold
+            val roi = if (updated.inspectionRoi.isValid) updated.inspectionRoi else InspectionRoi.DEFAULT
             preferences[PreferencesKeys.STABILITY_DURATION_MS] =
                 InspectionSettings.DEFAULT_STABILITY_DURATION_MS
             preferences[PreferencesKeys.MAX_WIDTH_CHANGE_RATIO] = updated.maxWidthChangeRatio
@@ -140,7 +146,6 @@ class SettingsRepository(private val context: Context) {
             preferences[PreferencesKeys.GLOBAL_MOTION_SENSITIVITY] = updated.globalMotionSensitivity
             preferences[PreferencesKeys.TRACKING_TIMEOUT_MS] = updated.trackingTimeoutMs
             preferences[PreferencesKeys.INSPECTION_TIMEOUT_MS] = updated.inspectionTimeoutMs
-            preferences[PreferencesKeys.SHOW_CONFIDENCE_LABELS] = updated.showConfidenceLabels
             preferences[PreferencesKeys.BUZZER_ENABLED] = updated.buzzerEnabled
             preferences[PreferencesKeys.BUZZER_FREQ_HZ] = updated.buzzerFrequencyHz
             preferences[PreferencesKeys.BEEP_COUNT] = updated.beepCount
@@ -150,6 +155,10 @@ class SettingsRepository(private val context: Context) {
             preferences[PreferencesKeys.VOICE_LOCALE] = updated.voiceLocale
             preferences[PreferencesKeys.PASS_AUDIO_ENABLED] = updated.passAudioEnabled
             preferences[PreferencesKeys.SIMULATION_MODE] = updated.simulationMode
+            preferences[PreferencesKeys.ROI_LEFT] = roi.left
+            preferences[PreferencesKeys.ROI_TOP] = roi.top
+            preferences[PreferencesKeys.ROI_RIGHT] = roi.right
+            preferences[PreferencesKeys.ROI_BOTTOM] = roi.bottom
         }
     }
 }

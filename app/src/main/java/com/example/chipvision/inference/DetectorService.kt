@@ -28,7 +28,8 @@ class DetectorService(private val modelManager: ModelManager) {
      */
     @Synchronized
     fun detect(bitmap: Bitmap, threshold: Float = 0.70f): List<Detection> {
-        val interpreter = modelManager.detectorInterpreter ?: return emptyList()
+        val interpreter = modelManager.detectorInterpreter
+            ?: throw IllegalStateException("${ModelManager.MODEL_FILE_NAME} is not initialized")
 
         val inputSize = modelManager.detectorInputSize
         val isNchw = modelManager.isDetectorNchw
@@ -90,21 +91,16 @@ class DetectorService(private val modelManager: ModelManager) {
         val outputTensor = interpreter.getOutputTensor(0)
         val outputShape = outputTensor.shape()
         if (outputShape.size != 3 || outputShape[0] != 1 || outputTensor.dataType().name != "FLOAT32") {
-            Log.e(tag, "Unsupported detector output shape: ${outputShape.contentToString()}")
-            return emptyList()
+            throw IllegalStateException("Unsupported detector output tensor ${outputShape.contentToString()} (${outputTensor.dataType()})")
         }
         val recordsFirst = outputShape[2] == 5 || outputShape[2] == 6
         val channelsFirst = outputShape[1] == 5 || outputShape[1] == 6
         if (recordsFirst == channelsFirst) {
-            Log.e(tag, "Ambiguous detector output layout: ${outputShape.contentToString()}")
-            return emptyList()
+            throw IllegalStateException("Unsupported detector output layout ${outputShape.contentToString()}")
         }
         val recordSize = if (recordsFirst) outputShape[2] else outputShape[1]
-        val outputLayout = if (recordSize == 5) {
-            DetectorOutputLayout.CENTER_SINGLE_CLASS
-        } else {
-            DetectorOutputLayout.CENTER_MULTI_CLASS
-        }
+        if (recordSize != 6) throw IllegalStateException("Expected 6 values per raw YOLO prediction, got $recordSize from ${outputShape.contentToString()}")
+        val outputLayout = DetectorOutputLayout.CENTER_MULTI_CLASS
         val outputArray = Array(outputShape[0]) {
             Array(outputShape[1]) { FloatArray(outputShape[2]) }
         }
@@ -114,7 +110,7 @@ class DetectorService(private val modelManager: ModelManager) {
             interpreter.run(byteBuffer, outputArray)
         } catch (e: Exception) {
             Log.e(tag, "Detector inference failed", e)
-            return emptyList()
+            throw IllegalStateException("Detector inference failed", e)
         }
 
         val detections = mutableListOf<Detection>()
@@ -151,7 +147,7 @@ class DetectorService(private val modelManager: ModelManager) {
             } else {
                 FloatArray(recordSize) { valueIndex -> rawDetections[valueIndex][i] }
             }
-            val confidence = if (recordSize == 5) raw[4] else maxOf(raw[4], raw[5])
+            val confidence = maxOf(raw[4], raw[5])
 
             // Detector candidates at the configured threshold are eligible.
             if (confidence.isFinite()) {
@@ -196,7 +192,7 @@ class DetectorService(private val modelManager: ModelManager) {
                     "inferenceMs=${SystemClock.elapsedRealtime() - inferenceStartMs}"
             )
         }
-        return detections
+        return DetectionNms.apply(detections)
     }
 
     private fun getOrCreateBuffer(size: Int, isNchw: Boolean): ByteBuffer {

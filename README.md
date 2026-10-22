@@ -1,74 +1,34 @@
-# CHIPVISION — Automated Chip Inspection System
+# CHIPWELL Android Inspection
 
-CHIPVISION is an industrial-grade automated vision inspection application for electronic chips moving on a conveyor belt. It runs offline on native Android using Jetpack Compose, CameraX, LiteRT/TensorFlow Lite, and Room database persistence.
+CHIPWELL is an Android camera inspection app for chips moving on a conveyor. It uses Jetpack Compose, CameraX, TensorFlow Lite, Room, Bluetooth, and ESP32 integration.
 
----
+## Inspection model and pipeline
 
-## Key Capabilities & Core Rules
+The inspection workflow uses one model: `app/src/main/assets/chipwell_yolo26n.tflite`.
 
-1. **Continuous Real-Time Conveyor Monitoring**
-   - The live camera feed observes the conveyor continuously.
-   - The operator moves the physical conveyor with the paddle; CHIPVISION automatically locks onto each new stationary scene and conducts the inspection cycle without requiring manual Start presses after every cycle.
+The checked asset SHA-256 is `7f564d6f8057d4968ac68994b702781f9c4326180876437df8893e10fd78fd00`. Its FlatBuffer tensor metadata reports input `[1, 3, 512, 512]` and output `[1, 6, 5376]`, both float tensors. The dense 5,376-candidate output has no embedded NMS operator; Android applies class-aware greedy NMS at IoU `0.70` with a 300-box cap. Detector input is RGB, float32 scaled to `[0,1]`, letterboxed to 512 square with value 114. The Android decoder treats each output candidate as `(centerX, centerY, width, height, chipScore, markingScore)`. That numeric decoder and preprocessing still need device-side comparison against the Colab reference before parity can be claimed.
 
-2. **200 ms Camera Stability Validation**
-   - Camera-motion analysis must confirm continuous camera stability for exactly **200 ms (0.2 seconds)** before inspection finalization.
-   - Any conveyor or scene motion instantly resets the stability interval, invalidates pending crops, and hides affected candidates.
+Class ID 0 is `chip`; class ID 1 is `marking`. The post-processing configuration is centralized in `InspectionPostProcessor`:
 
-3. **Completely Hidden Unstable Overlays**
-   - In compliance with the non-negotiable specification, **unstable detections are completely invisible**. No bounding boxes, labels, or placeholders appear until candidates have achieved verified stability.
+- Chip confidence: `0.80`
+- Marking confidence: `0.70`
+- Relative chip and marking size tolerance: `0.25`
+- Marking-to-chip overlap: at least `0.50` of marking area
+- Markings nearest the top or right chip edge pass; left or bottom fail
 
-4. **Empty-Impression-First Decision Rule**
-   - Evaluates confirmed stable empty impressions first.
-   - If **at least one confirmed empty impression exists**, the cycle immediately finalizes as **FAIL** (`FAIL_EMPTY_IMPRESSION_PRESENT`).
-   - Empty impressions are displayed in **red** labelled `EMPTY IMPRESSION`. Empty impressions are never sent to the classifier, and chips in that failed cycle are not classified.
+Only accepted chips and retained markings appear in the camera overlay. The result popup contains only `PASS` or `FAIL`. Technical model or inference failures use the app's `ERROR` state and do not become product FAIL records. Inference and post-processing run away from the UI thread.
 
-5. **Chip Classification & Centralized PASS/FAIL Engine**
-   - When no empty impressions exist, every valid stable chip is cropped from the retained stable source frame.
-   - Identifies chip type (`PCS.06.K` or `PCS.26.C`) and orientation (`correct_upward`, `downward`, `flipped`).
-   - Minimum classifier confidence threshold is $\ge 0.70$.
-   - **PASS** is granted only when all chips are confidently identified as `PCS.06.K` or `PCS.26.C` and classified as `correct_upward`.
+## Existing application features
 
-6. **Audio & Voice Alerts**
-   - Multi-tone industrial buzzer (950 Hz Industrial Beep, 1600 Hz High Tone, 600 Hz Warning Pulse) with configurable count, gap, and volume.
-   - Android TextToSpeech voice announcements ("Pass", "Fail: Empty impression detected", etc.).
+Camera preview, camera stability handling, Bluetooth/ESP32 connectivity, conveyor workflow, result audio/voice alerts, result timing, diagnostics, Room inspection history, and navigation remain in the app.
 
-7. **Local Persistence & Statistics**
-   - Real-time frame statistics, current cycle metrics, and cumulative totals (Total, PASS, FAIL, Yield %).
-   - Comprehensive filterable inspection history stored locally via Room Database.
-
----
-
-## Integrating Your Trained TFLite Models
-
-Place your two trained `.tflite` model files into the Android assets directory:
-
-```
-app/src/main/assets/chipvision_detector_direct.tflite
-app/src/main/assets/chipvision_classifier.tflite
-```
-
-### Verified Tensor Specifications
-- **Detector** (`chipvision_detector_direct.tflite`):
-  - Input: `[1, 3, 512, 512]` float32 (or `[1, 512, 512, 3]`), automatically detected
-  - Output: `[1, 300, 6]` `[x1, y1, x2, y2, confidence, classId]`
-  - Confidence threshold: strictly $> 0.85$ (rejection at $\le 0.85$)
-  - Class 0 = `chip`, Class 1 = `empty`
-
-- **Classifier** (`chipvision_classifier.tflite`):
-  - Input: `[1, 3, 224, 224]` float32 (or `[1, 224, 224, 3]`) with ImageNet normalization
-  - Output: 6 classes (`PCS_06_K_correct_upward`, `PCS_06_K_downward`, `PCS_06_K_flipped`, `PCS_26_C_correct_upward`, `PCS_26_C_downward`, `PCS_26_C_flipped`)
-  - Confidence threshold: $\ge 0.70$
-
-*Note: If testing without physical models loaded, enable "Lab / Demo Simulation Mode" in the Settings tab to test state transitions, audio alerts, and UI flows.*
-
----
+Simulation Mode remains an explicit UI testing option. It does not act as a fallback model for production inspection.
 
 ## Architecture
 
-- **`com.example.chipvision.data`**: Domain models (`Detection`, `TrackedCandidate`, `InspectionDecision`), Room database (`InspectionRecord`, `InspectionDao`, `InspectionDatabase`), and DataStore `SettingsRepository`.
-- **`com.example.chipvision.inference`**: `ModelManager`, `DetectorService`, `ClassifierService`.
-- **`com.example.chipvision.tracking`**: `DetectionTracker`, `StabilityValidator`.
-- **`com.example.chipvision.engine`**: `InspectionCoordinator`, `InspectionDecisionEngine`.
-- **`com.example.chipvision.camera`**: `CameraController` (CameraX Preview + ImageAnalysis).
-- **`com.example.chipvision.audio`**: `AudioAlertManager` (PCM tone generator + TTS).
-- **`com.example.chipvision.ui`**: `ChipVisionViewModel`, `InspectionScreen`, `HistoryScreen`, `SettingsScreen`, `BoundingBoxOverlay`.
+- `com.example.chipvision.inference`: `ModelManager`, `DetectorService`, dense-output decoder, and NMS.
+- `com.example.chipvision.engine`: inspection coordination, confidence eligibility, chip/marking post-processing, result dispatch, and performance metrics.
+- `com.example.chipvision.tracking`: camera detection tracking and stability handling.
+- `com.example.chipvision.camera`: CameraX preview and image analysis.
+- `com.example.chipvision.audio`: result beep and voice announcements.
+- `com.example.chipvision.ui`: Compose inspection, result popup, history, settings, and diagnostics screens.

@@ -15,8 +15,8 @@ class DetectorBoxDecoderTest {
     @Test
     fun decodesNormalizedCenterCoordinatesAndReversesLetterbox() {
         val result = DetectorBoxDecoder.decode(
-            raw = floatArrayOf(0.5f, 0.5f, 0.25f, 0.5f, 0.9f),
-            layout = DetectorOutputLayout.CENTER_SINGLE_CLASS,
+            raw = floatArrayOf(0.5f, 0.5f, 0.25f, 0.5f, 0.9f, 0.1f),
+            layout = DetectorOutputLayout.CENTER_MULTI_CLASS,
             coordinatesAreNormalized = true,
             inputSize = 512,
             padX = 0f,
@@ -35,7 +35,7 @@ class DetectorBoxDecoderTest {
     }
 
     @Test
-    fun decodesPixelCenterCoordinatesAndSelectsHighestClassScore() {
+    fun decodesPixelCenterCoordinatesAndMapsWinningClassScore() {
         val result = DetectorBoxDecoder.decode(
             raw = floatArrayOf(256f, 256f, 100f, 80f, 0.2f, 0.8f),
             layout = DetectorOutputLayout.CENTER_MULTI_CLASS,
@@ -60,8 +60,8 @@ class DetectorBoxDecoderTest {
     @Test
     fun rejectsZeroAreaDecodedBoxes() {
         val result = DetectorBoxDecoder.decode(
-            raw = floatArrayOf(0.5f, 0.5f, 0f, 0.2f, 0.9f),
-            layout = DetectorOutputLayout.CENTER_SINGLE_CLASS,
+            raw = floatArrayOf(0.5f, 0.5f, 0f, 0.2f, 0.9f, 0.1f),
+            layout = DetectorOutputLayout.CENTER_MULTI_CLASS,
             coordinatesAreNormalized = true,
             inputSize = 512,
             padX = 0f,

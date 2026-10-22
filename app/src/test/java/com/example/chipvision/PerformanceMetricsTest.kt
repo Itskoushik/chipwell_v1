@@ -23,7 +23,7 @@ class PerformanceMetricsTest {
 
     @Test
     fun emptyMetricsAreSafe() {
-        val summary = PerformanceMetrics(maxSamples = 2).snapshot().classifier
+        val summary = PerformanceMetrics(maxSamples = 2).snapshot().postProcessing
 
         assertEquals(0, summary.count)
         assertEquals(0.0, summary.averageMs, 0.0)

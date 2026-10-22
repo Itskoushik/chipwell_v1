@@ -2,7 +2,7 @@ package com.example.chipvision.engine
 
 /**
  * Tracks the active inspection arrangement and retains only the newest
- * arrangement observed while classification or a result hold is active.
+ * arrangement observed while post-processing or a result hold is active.
  */
 class InspectionDispatchState {
     private var activeSceneHash: Int? = null

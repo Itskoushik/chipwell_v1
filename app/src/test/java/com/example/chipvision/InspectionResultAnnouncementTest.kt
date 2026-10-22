@@ -10,7 +10,7 @@ class InspectionResultAnnouncementTest {
     @Test
     fun passAnnouncementContainsOnlyTheAggregateResult() {
         assertEquals("Pass", InspectionResultAnnouncement.PASS)
-        assertEquals(1_000L, InspectionResultDelay.PASS_DELAY_MS)
+        assertEquals(500L, InspectionResultDelay.PASS_DELAY_MS)
         assertFalse(InspectionResultAnnouncement.PASS.contains("chip", ignoreCase = true))
         assertFalse(InspectionResultAnnouncement.PASS.contains("orientation", ignoreCase = true))
     }
@@ -18,6 +18,7 @@ class InspectionResultAnnouncementTest {
     @Test
     fun failAnnouncementContainsOnlyTheAggregateResult() {
         assertEquals("Fail", InspectionResultAnnouncement.FAIL)
+        assertEquals(500L, InspectionResultDelay.FAIL_DELAY_MS)
         assertFalse(InspectionResultAnnouncement.FAIL.contains("chip", ignoreCase = true))
         assertFalse(InspectionResultAnnouncement.FAIL.contains("orientation", ignoreCase = true))
     }

@@ -1,179 +1,32 @@
 package com.example.chipvision.engine
 
-import com.example.chipvision.data.model.ChipOrientation
-import com.example.chipvision.data.model.ChipSummary
-import com.example.chipvision.data.model.ChipType
 import com.example.chipvision.data.model.InspectionDecision
 import com.example.chipvision.data.model.ReasonCode
-import com.example.chipvision.data.model.TrackedCandidate
 
+/** Adapts the single-model post-processing result to the app's existing result/history contract. */
 object InspectionDecisionEngine {
-
-    /**
-     * Evaluates a stable scene and produces the final immutable InspectionDecision.
-     * Enforces the Empty-Impression-First rule, all PASS conditions, and explicit FAIL reason codes.
-     */
     fun evaluate(
-        candidates: List<TrackedCandidate>,
+        result: InspectionPostProcessor.Result,
         sessionId: String,
-        snapshotId: String,
-        inferenceError: String? = null
+        snapshotId: String
     ): InspectionDecision {
-        val now = System.currentTimeMillis()
-
-        // 1. Technical / Inference failure check
-        if (!inferenceError.isNullOrBlank()) {
-            return InspectionDecision(
-                isPass = false,
-                reasonCode = ReasonCode.FAIL_INFERENCE_ERROR,
-                message = "Inference failure: $inferenceError",
-                chipCount = 0,
-                emptyCount = 0,
-                timestampMs = now,
-                sessionId = sessionId,
-                snapshotId = snapshotId
-            )
-        }
-
-        // 2. Identify confirmed stable empty impressions
-        val emptyImpressions = candidates.filter { it.isEmptyImpression && it.isStable }
-        val emptyCount = emptyImpressions.size
-
-        // RULE: Confirmed empty impression present = IMMEDIATE FAIL
-        if (emptyCount > 0) {
-            return InspectionDecision(
-                isPass = false,
-                reasonCode = ReasonCode.FAIL_EMPTY_IMPRESSION_PRESENT,
-                message = "FAIL: Empty impression detected in scene",
-                chipCount = candidates.count { it.isChip },
-                emptyCount = emptyCount,
-                chips = emptyList(), // Do not classify or report chip pass/fail when empty impressions exist
-                timestampMs = now,
-                sessionId = sessionId,
-                snapshotId = snapshotId
-            )
-        }
-
-        // 3. Evaluate chips
-        val chipCandidates = candidates.filter { it.isChip && it.isStable }
-        val chipCount = chipCandidates.size
-
-        if (chipCount == 0) {
-            return InspectionDecision(
-                isPass = false,
-                reasonCode = ReasonCode.FAIL_NO_VALID_CHIPS,
-                message = "FAIL: No valid chips detected on conveyor",
-                chipCount = 0,
-                emptyCount = 0,
-                timestampMs = now,
-                sessionId = sessionId,
-                snapshotId = snapshotId
-            )
-        }
-
-        // 4. Check that all chip candidates have completed classification
-        val unclassified = chipCandidates.filter { it.classification == null }
-        if (unclassified.isNotEmpty()) {
-            return InspectionDecision(
-                isPass = false,
-                reasonCode = ReasonCode.FAIL_UNRESOLVED_CANDIDATE,
-                message = "FAIL: Chip candidate awaiting classification",
-                chipCount = chipCount,
-                emptyCount = 0,
-                timestampMs = now,
-                sessionId = sessionId,
-                snapshotId = snapshotId
-            )
-        }
-
-        // 5. Evaluate individual chip classifications
-        val chipSummaries = mutableListOf<ChipSummary>()
-        var downwardFound = false
-        var flippedFound = false
-        var uncertainFound = false
-
-        for (candidate in chipCandidates) {
-            val cls = candidate.classification!!
-            val isKnownType = cls.chipType == ChipType.PCS_06_K || cls.chipType == ChipType.PCS_26_C
-            val isAccepted = cls.isAccepted && isKnownType
-
-            val summary = ChipSummary(
-                trackId = candidate.trackId,
-                chipType = cls.chipType,
-                orientation = cls.orientation,
-                confidence = cls.confidence,
-                isCorrectUpward = isAccepted && cls.orientation == ChipOrientation.CORRECT_UPWARD
-            )
-            chipSummaries.add(summary)
-
-            if (!isAccepted || cls.orientation == ChipOrientation.UNCERTAIN) {
-                uncertainFound = true
-            } else if (cls.orientation == ChipOrientation.DOWNWARD) {
-                downwardFound = true
-            } else if (cls.orientation == ChipOrientation.FLIPPED) {
-                flippedFound = true
-            }
-        }
-
-        // Strict priority order for failure reasons
-        if (downwardFound) {
-            return InspectionDecision(
-                isPass = false,
-                reasonCode = ReasonCode.FAIL_CHIP_DOWNWARD,
-                message = "FAIL: Downward chip orientation detected",
-                chipCount = chipCount,
-                emptyCount = 0,
-                chips = chipSummaries,
-                timestampMs = now,
-                sessionId = sessionId,
-                snapshotId = snapshotId
-            )
-        }
-
-        if (flippedFound) {
-            return InspectionDecision(
-                isPass = false,
-                reasonCode = ReasonCode.FAIL_CHIP_FLIPPED,
-                message = "FAIL: Flipped chip orientation detected",
-                chipCount = chipCount,
-                emptyCount = 0,
-                chips = chipSummaries,
-                timestampMs = now,
-                sessionId = sessionId,
-                snapshotId = snapshotId
-            )
-        }
-
-        if (uncertainFound) {
-            return InspectionDecision(
-                isPass = false,
-                reasonCode = ReasonCode.FAIL_UNCERTAIN_CLASSIFICATION,
-                message = "FAIL: Low confidence or uncertain chip classification",
-                chipCount = chipCount,
-                emptyCount = 0,
-                chips = chipSummaries,
-                timestampMs = now,
-                sessionId = sessionId,
-                snapshotId = snapshotId
-            )
-        }
-
-        // If we reached here:
-        // - At least one valid chip exists
-        // - No empty impressions
-        // - Every chip is PCS.06.K or PCS.26.C
-        // - Every chip is CORRECT_UPWARD
-        // - Confidences >= threshold
+        val pass = result.finalPass
         return InspectionDecision(
-            isPass = true,
-            reasonCode = ReasonCode.PASS_ALL_CHIPS_CORRECT_UPWARD,
-            message = "PASS: All chips correctly upward (${chipSummaries.joinToString { it.chipType.displayName }})",
-            chipCount = chipCount,
+            isPass = pass,
+            reasonCode = when {
+                pass -> ReasonCode.PASS_SINGLE_MODEL
+                result.chips.isEmpty() -> ReasonCode.FAIL_NO_VALID_CHIPS
+                else -> ReasonCode.FAIL_MARKING_RULE
+            },
+            message = if (pass) "PASS" else "FAIL",
+            chipCount = result.chips.size,
             emptyCount = 0,
-            chips = chipSummaries,
-            timestampMs = now,
             sessionId = sessionId,
-            snapshotId = snapshotId
+            snapshotId = snapshotId,
+            inspectionDetailsJson = result.chips.mapIndexed { index, chip ->
+                "{\"chip\":${index + 1},\"confidence\":${chip.chip.confidence}," +
+                    "\"retainedMarkings\":${chip.markings.size},\"pass\":${chip.passes}}"
+            }.joinToString(prefix = "[", postfix = "]")
         )
     }
 }

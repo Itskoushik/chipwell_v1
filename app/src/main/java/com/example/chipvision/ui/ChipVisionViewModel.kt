@@ -10,7 +10,6 @@ import com.example.chipvision.data.database.InspectionRecord
 import com.example.chipvision.data.preferences.InspectionSettings
 import com.example.chipvision.data.preferences.SettingsRepository
 import com.example.chipvision.engine.InspectionCoordinator
-import com.example.chipvision.inference.ClassifierService
 import com.example.chipvision.inference.DetectorService
 import com.example.chipvision.inference.ModelManager
 import com.example.chipvision.tracking.DetectionTracker
@@ -50,7 +49,6 @@ class ChipVisionViewModel(application: Application) : AndroidViewModel(applicati
 
     private val modelManager = ModelManager(application)
     private val detectorService = DetectorService(modelManager)
-    private val classifierService = ClassifierService(modelManager)
     private val tracker = DetectionTracker()
     private val stabilityValidator = StabilityValidator()
 
@@ -63,7 +61,6 @@ class ChipVisionViewModel(application: Application) : AndroidViewModel(applicati
     private val coordinator = InspectionCoordinator(
         modelManager = modelManager,
         detectorService = detectorService,
-        classifierService = classifierService,
         tracker = tracker,
         stabilityValidator = stabilityValidator,
         audioAlertManager = audioAlertManager,
@@ -119,7 +116,7 @@ class ChipVisionViewModel(application: Application) : AndroidViewModel(applicati
     fun isSystemReady(): Boolean {
         val sim = settings.value.simulationMode
         val diag = coordinator.diagnostics.value
-        return sim || (diag.detectorLoaded && diag.classifierLoaded)
+        return sim || diag.modelLoaded
     }
 
     fun checkInspectionPrerequisites(hasCameraPermission: Boolean): InspectionStartResult {
@@ -128,15 +125,14 @@ class ChipVisionViewModel(application: Application) : AndroidViewModel(applicati
         }
         val sim = settings.value.simulationMode
         val diag = coordinator.diagnostics.value
-        if (sim || (diag.detectorLoaded && diag.classifierLoaded)) {
+        if (sim || diag.modelLoaded) {
             return InspectionStartResult.Ready
         }
         val missing = mutableListOf<String>()
-        if (!diag.detectorLoaded) missing.add("Detector model (${com.example.chipvision.inference.ModelManager.DETECTOR_FILE_NAME})")
-        if (!diag.classifierLoaded) missing.add("Classifier model (${com.example.chipvision.inference.ModelManager.CLASSIFIER_FILE_NAME})")
+        if (!diag.modelLoaded) missing.add("Inspection model (${ModelManager.MODEL_FILE_NAME})")
         return InspectionStartResult.ModelsNotReady(
-            "Cannot start inspection: Neural network models are not loaded into memory (${missing.joinToString(", ")}).\n\n" +
-            "Please ensure the model files are located in assets, or enable Simulation Mode in Settings for testing."
+            "Cannot start inspection: the inspection model is not loaded into memory (${missing.joinToString(", ")}).\n\n" +
+            "Please ensure chipwell_yolo26n.tflite is in assets."
         )
     }
 
@@ -165,12 +161,11 @@ class ChipVisionViewModel(application: Application) : AndroidViewModel(applicati
                 val diag = coordinator.diagnostics.value
                 val timeStr = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
 
-                val feedback = if (diag.allModelsLoaded) {
-                    "✓ Both models successfully verified and loaded ($timeStr)."
+                val feedback = if (diag.modelLoaded) {
+                    "✓ Inspection model successfully verified and loaded ($timeStr)."
                 } else {
                     val issues = mutableListOf<String>()
-                    if (!diag.detector.isLoaded) issues.add("Detector: ${diag.detector.error ?: "failed"}")
-                    if (!diag.classifier.isLoaded) issues.add("Classifier: ${diag.classifier.error ?: "failed"}")
+                    if (!diag.model.isLoaded) issues.add("Inspection model: ${diag.model.error ?: "failed"}")
                     "Scan completed at $timeStr: ${issues.joinToString("; ")}"
                 }
                 _lastReloadFeedback.value = feedback

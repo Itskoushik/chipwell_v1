@@ -75,7 +75,7 @@ fun DiagnosticsScreen(
         Card(
             shape = RoundedCornerShape(12.dp),
             colors = CardDefaults.cardColors(
-                containerColor = if (diagnostics.allModelsLoaded) {
+                containerColor = if (diagnostics.modelLoaded) {
                     Color(0xFF2E7D32).copy(alpha = 0.12f)
                 } else {
                     MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f)
@@ -92,17 +92,17 @@ fun DiagnosticsScreen(
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Icon(
-                        imageVector = if (diagnostics.allModelsLoaded) Icons.Default.CheckCircle else Icons.Default.Warning,
+                        imageVector = if (diagnostics.modelLoaded) Icons.Default.CheckCircle else Icons.Default.Warning,
                         contentDescription = null,
-                        tint = if (diagnostics.allModelsLoaded) Color(0xFF2E7D32) else MaterialTheme.colorScheme.error,
+                        tint = if (diagnostics.modelLoaded) Color(0xFF2E7D32) else MaterialTheme.colorScheme.error,
                         modifier = Modifier.size(28.dp)
                     )
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = if (diagnostics.allModelsLoaded) "Neural Network Interpreters Active" else "Technical Diagnostics",
+                            text = if (diagnostics.modelLoaded) "Inspection Model Active" else "Technical Diagnostics",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = if (diagnostics.allModelsLoaded) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onSurface
+                            color = if (diagnostics.modelLoaded) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onSurface
                         )
                         Text(
                             text = "Last scan: $checkTimeStr",
@@ -150,7 +150,7 @@ fun DiagnosticsScreen(
                             text = feedback,
                             style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.Medium,
-                            color = if (diagnostics.allModelsLoaded) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onSurface,
+                            color = if (diagnostics.modelLoaded) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.padding(10.dp)
                         )
                     }
@@ -160,18 +160,10 @@ fun DiagnosticsScreen(
 
         // Detector Diagnostic Card
         ModelDetailCard(
-            title = "Chip Detector",
-            expectedFilename = "chipvision_detector_direct.tflite",
-            status = diagnostics.detector,
-            classesDescription = "Class 0 = chip, Class 1 = empty impression (confidence >= threshold)"
-        )
-
-        // Classifier Diagnostic Card
-        ModelDetailCard(
-            title = "Chip Classifier",
-            expectedFilename = "chipvision_classifier.tflite",
-            status = diagnostics.classifier,
-            classesDescription = "6 Classes: PCS_06_K, PCS_26_C (Confidence >= 0.70)"
+            title = "Single Inspection Detector",
+            expectedFilename = com.example.chipvision.inference.ModelManager.MODEL_FILE_NAME,
+            status = diagnostics.model,
+            classesDescription = "Class 0 = chip (>= 0.80), Class 1 = marking (>= 0.70)"
         )
 
         Card(
@@ -190,7 +182,7 @@ fun DiagnosticsScreen(
                 )
                 Divider()
                 MetricRow("Detector", performance.detector)
-                MetricRow("Classifier", performance.classifier)
+                MetricRow("Post-processing", performance.postProcessing)
                 MetricRow("Inspection cycle", performance.inspectionCycle)
                 MetricRow("Frame analysis", performance.frameAnalysis)
                 DiagnosticsRow("Processed frames", performance.processedFrames.toString())
@@ -298,7 +290,7 @@ fun DiagnosticsScreen(
                 }
 
                 Text(
-                    text = "Both TFLite files must be packaged directly in the app module's assets directory:",
+                    text = "The inspection model must be packaged directly in the app module's assets directory:",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -309,7 +301,7 @@ fun DiagnosticsScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        text = "app/src/main/assets/chipvision_detector_direct.tflite\napp/src/main/assets/chipvision_classifier.tflite",
+                        text = "app/src/main/assets/chipwell_yolo26n.tflite",
                         fontFamily = FontFamily.Monospace,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Medium,
@@ -319,7 +311,7 @@ fun DiagnosticsScreen(
                 }
 
                 Text(
-                    text = "Note: Creating empty 0-byte placeholder files will fail FlatBuffer validation. Both models must be valid binary files containing the 'TFL3' header.",
+                    text = "Note: Creating empty 0-byte placeholder files will fail FlatBuffer validation. The model must be a valid TFLite FlatBuffer containing the 'TFL3' identifier.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

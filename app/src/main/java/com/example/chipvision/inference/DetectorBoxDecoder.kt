@@ -3,8 +3,7 @@ package com.example.chipvision.inference
 import android.graphics.RectF
 
 enum class DetectorOutputLayout {
-    CENTER_SINGLE_CLASS,
-    CENTER_MULTI_CLASS
+    CENTER_MULTI_CLASS,
 }
 
 data class DecodedDetectorPrediction(
@@ -25,18 +24,10 @@ object DetectorBoxDecoder {
         originalWidth: Float,
         originalHeight: Float
     ): DecodedDetectorPrediction? {
-        if (raw.size < 5 || raw.any { it.isNaN() || it.isInfinite() }) return null
+        if (layout != DetectorOutputLayout.CENTER_MULTI_CLASS || raw.size != 6 || raw.any { !it.isFinite() }) return null
 
-        val confidence: Float
-        val classId: Int
-        if (layout == DetectorOutputLayout.CENTER_SINGLE_CLASS) {
-            confidence = raw[4]
-            classId = 0
-        } else {
-            if (raw.size < 6) return null
-            classId = if (raw[4] >= raw[5]) 0 else 1
-            confidence = maxOf(raw[4], raw[5])
-        }
+        val classId = if (raw[4] >= raw[5]) 0 else 1
+        val confidence = maxOf(raw[4], raw[5])
         if (confidence.isNaN() || confidence.isInfinite()) return null
 
         var centerX = raw[0]

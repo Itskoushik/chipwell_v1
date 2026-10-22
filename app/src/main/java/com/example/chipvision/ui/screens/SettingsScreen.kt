@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Memory
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Remove
@@ -39,6 +40,7 @@ import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -58,6 +60,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.chipvision.ui.AppScreen
 import com.example.chipvision.ui.ChipVisionViewModel
+import com.example.chipvision.data.preferences.InspectionRoi
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -82,109 +85,59 @@ fun SettingsScreen(
             title = "A. Detection Parameters",
             icon = Icons.Default.Tune
         ) {
-            // Detector Threshold
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Detector Confidence",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.weight(1f, fill = false)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "${(settings.detectorThreshold * 100).roundToInt()}% (>= threshold)",
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-                Text(
-                    text = "A detection is eligible when confidence is at least the configured threshold.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                SliderWithStepControls(
-                    value = settings.detectorThreshold,
-                    onValueChange = { newVal ->
-                        val rounded = (newVal * 100).roundToInt() / 100f
-                        viewModel.updateSettings { it.copy(detectorThreshold = rounded) }
-                    },
-                    valueRange = 0.50f..0.98f,
-                    step = 0.01f,
-                    testTagPrefix = "detector_threshold"
-                )
+                Text("Fixed detector thresholds", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                Text("Chip 80% · Marking 70% · Size tolerance 25% · Marking overlap 50%", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
 
             Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
 
-            // Classifier Threshold
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Classifier Acceptance",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.weight(1f, fill = false)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "${(settings.classifierThreshold * 100).roundToInt()}% (>= 0.70)",
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
+        }
+
+        SettingsSectionCard(
+            title = "Inspection Region",
+            icon = Icons.Default.QrCodeScanner
+        ) {
+            Text(
+                text = "Chip boxes must be completely inside this normalized camera-image region.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            RoiCoordinateSlider("Left", settings.inspectionRoi.left, 0f..0.95f) { value ->
+                viewModel.updateSettings {
+                    it.copy(inspectionRoi = InspectionRoi.validatedOrDefault(
+                        value, it.inspectionRoi.top, it.inspectionRoi.right, it.inspectionRoi.bottom
+                    ))
                 }
-                Text(
-                    text = "Classification is accepted only when top class probability is at least threshold.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                SliderWithStepControls(
-                    value = settings.classifierThreshold,
-                    onValueChange = { newVal ->
-                        val rounded = (newVal * 100).roundToInt() / 100f
-                        viewModel.updateSettings { it.copy(classifierThreshold = rounded) }
-                    },
-                    valueRange = 0.50f..0.95f,
-                    step = 0.01f,
-                    testTagPrefix = "classifier_threshold"
-                )
             }
-
-            Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-
-            // Confidence Labels Display
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            RoiCoordinateSlider("Top", settings.inspectionRoi.top, 0f..0.95f) { value ->
+                viewModel.updateSettings {
+                    it.copy(inspectionRoi = InspectionRoi.validatedOrDefault(
+                        it.inspectionRoi.left, value, it.inspectionRoi.right, it.inspectionRoi.bottom
+                    ))
+                }
+            }
+            RoiCoordinateSlider("Right", settings.inspectionRoi.right, 0.05f..1f) { value ->
+                viewModel.updateSettings {
+                    it.copy(inspectionRoi = InspectionRoi.validatedOrDefault(
+                        it.inspectionRoi.left, it.inspectionRoi.top, value, it.inspectionRoi.bottom
+                    ))
+                }
+            }
+            RoiCoordinateSlider("Bottom", settings.inspectionRoi.bottom, 0.05f..1f) { value ->
+                viewModel.updateSettings {
+                    it.copy(inspectionRoi = InspectionRoi.validatedOrDefault(
+                        it.inspectionRoi.left, it.inspectionRoi.top, it.inspectionRoi.right, value
+                    ))
+                }
+            }
+            OutlinedButton(
+                onClick = { viewModel.updateSettings { it.copy(inspectionRoi = InspectionRoi.DEFAULT) } },
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
-                    Text(
-                        text = "Show Confidence Labels",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        text = "Display percentage scores on classified bounding boxes.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Switch(
-                    checked = settings.showConfidenceLabels,
-                    onCheckedChange = { checked ->
-                        viewModel.updateSettings { it.copy(showConfidenceLabels = checked) }
-                    },
-                    modifier = Modifier.testTag("confidence_labels_switch")
-                )
+                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Restore default ROI")
             }
         }
 
@@ -213,6 +166,7 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.primary
                     )
                 }
+
                 Text(
                     text = "Camera must remain stable for 0.2 seconds before inspection.",
                     style = MaterialTheme.typography.bodySmall,
@@ -350,7 +304,7 @@ fun SettingsScreen(
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
-                        text = "Acoustic alarm triggered on confirmed defect or empty impression.",
+                        text = "Acoustic alarm triggered when an inspection fails.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -539,6 +493,29 @@ fun SettingsScreen(
 /**
  * Reusable Slider with accessible Minus and Plus step buttons.
  */
+@Composable
+private fun RoiCoordinateSlider(
+    label: String,
+    value: Float,
+    valueRange: ClosedFloatingPointRange<Float>,
+    onValueChange: (Float) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(label, style = MaterialTheme.typography.bodyMedium)
+            Text("%.2f".format(value), color = MaterialTheme.colorScheme.primary)
+        }
+        Slider(
+            value = value,
+            onValueChange = { onValueChange((it * 100f).roundToInt() / 100f) },
+            valueRange = valueRange
+        )
+    }
+}
+
 @Composable
 fun SliderWithStepControls(
     value: Float,

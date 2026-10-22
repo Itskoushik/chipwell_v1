@@ -214,7 +214,7 @@ fun HomeScreen(
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = "Inspect chip orientation and detect empty impressions in real time.",
+                            text = "Inspect chips and markings in real time.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -223,7 +223,7 @@ fun HomeScreen(
 
                 Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-                // Industrial system readiness banner (no separate detector/classifier badges)
+                // Industrial system readiness banner for the single inspection model.
                 val isSystemReady = viewModel.isSystemReady()
                 Surface(
                     shape = RoundedCornerShape(8.dp),

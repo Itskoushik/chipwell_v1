@@ -14,7 +14,6 @@ import com.example.chipvision.data.model.InspectionStatus
 import com.example.chipvision.data.model.ReasonCode
 import com.example.chipvision.data.model.TrackedCandidate
 import com.example.chipvision.data.preferences.InspectionSettings
-import com.example.chipvision.inference.ClassifierService
 import com.example.chipvision.inference.DetectorService
 import com.example.chipvision.inference.ModelDiagnostics
 import com.example.chipvision.inference.ModelManager
@@ -36,7 +35,6 @@ import java.util.UUID
 class InspectionCoordinator(
     private val modelManager: ModelManager,
     private val detectorService: DetectorService,
-    private val classifierService: ClassifierService,
     private val tracker: DetectionTracker,
     private val stabilityValidator: StabilityValidator,
     private val audioAlertManager: AudioAlertManager,
@@ -45,8 +43,8 @@ class InspectionCoordinator(
 ) {
     private val tag = "InspectionCoordinator"
     /**
-     * Guards coordinator state transitions only. Detector and classifier inference
-     * intentionally run outside this lock so the analyzer remains responsive.
+     * Guards coordinator state transitions only. Detector inference
+     * intentionally runs outside this lock so the analyzer remains responsive.
      */
     private val stateLock = Any()
 
@@ -88,7 +86,7 @@ class InspectionCoordinator(
     private var currentSessionId: String = UUID.randomUUID().toString()
     private var sessionGeneration: Long = 0L
     private var inspectionGeneration: Long = 0L
-    private var classificationToken: Long = 0L
+    private var processingToken: Long = 0L
     private var currentSnapshotId: String = ""
     private var isInspectionFinalizedForCurrentScene = false
     private var lastFinalizedSceneCandidatesHash: Int = 0
@@ -101,7 +99,7 @@ class InspectionCoordinator(
     // Source frame retaining
     private var retainedSnapshotFrame: Bitmap? = null
     private var resultHoldJob: Job? = null
-    private var classificationJob: Job? = null
+    private var processingJob: Job? = null
     private val inspectionDispatchState = InspectionDispatchState()
     private var activeClassificationAuthorization: ClassificationAuthorization? = null
     private var resultHoldUntilMs: Long = 0L
@@ -111,13 +109,12 @@ class InspectionCoordinator(
         val diag = modelManager.initialize()
         _diagnostics.value = diag
 
-        if (diag.detectorLoaded && diag.classifierLoaded) {
+        if (diag.modelLoaded) {
             _status.value = InspectionStatus.READY
-            _statusMessage.value = "Models Loaded. Monitoring live scene."
+            _statusMessage.value = "Inspection model loaded. Monitoring live scene."
         } else {
             val errorParts = mutableListOf<String>()
-            if (!diag.detectorLoaded) errorParts.add("Detector: ${diag.detectorError}")
-            if (!diag.classifierLoaded) errorParts.add("Classifier: ${diag.classifierError}")
+            errorParts.add("${ModelManager.MODEL_FILE_NAME}: ${diag.model.error}")
             _status.value = InspectionStatus.ERROR
             _statusMessage.value = "Model Error: ${errorParts.joinToString("; ")}"
         }
@@ -129,7 +126,7 @@ class InspectionCoordinator(
 
     /**
      * Called continuously on each incoming camera frame.
-     * The camera preview and detection NEVER pause during stability waiting or classification.
+     * The camera preview and detection NEVER pause during stability waiting or post-processing.
      */
     fun processFrame(bitmap: Bitmap, settings: InspectionSettings) {
         if (_isStopped.value) {
@@ -150,7 +147,7 @@ class InspectionCoordinator(
 
         try {
             // Check if models are ready
-            if (modelManager.detectorInterpreter == null || modelManager.classifierInterpreter == null) {
+            if (modelManager.detectorInterpreter == null) {
                 if (!settings.simulationMode) {
                     _status.value = InspectionStatus.ERROR
                     _statusMessage.value = "Models not loaded. Place .tflite files in assets or enable Demo Mode."
@@ -164,7 +161,7 @@ class InspectionCoordinator(
             val rawDetections: List<Detection> = if (settings.simulationMode && modelManager.detectorInterpreter == null) {
                 generateSimulationDetections(bitmap)
             } else {
-                detectorService.detect(bitmap, threshold = settings.detectorThreshold)
+                detectorService.detect(bitmap, threshold = InspectionPostProcessor.MARKING_CONFIDENCE)
             }
             val detectorDurationMs = (SystemClock.elapsedRealtimeNanos() - detectorStartNs) / 1_000_000L
             recordMetric { performanceMetrics.recordDetector(detectorDurationMs) }
@@ -172,11 +169,14 @@ class InspectionCoordinator(
             val filterStartNs = SystemClock.elapsedRealtimeNanos()
             val filteredDetections = DetectionFrameFilter.filter(
                 detections = rawDetections,
-                confidenceThreshold = settings.detectorThreshold
+                frameWidth = bitmap.width.toFloat(),
+                frameHeight = bitmap.height.toFloat(),
+                inspectionRoi = settings.inspectionRoi
             )
             val filterDurationMs = (SystemClock.elapsedRealtimeNanos() - filterStartNs) / 1_000_000L
             recordMetric { performanceMetrics.recordFilter(filterDurationMs) }
-            val detections = filteredDetections.detections
+            val processedFrame = InspectionPostProcessor.process(filteredDetections.detections)
+            val detections = processedFrame.acceptedDetections
             duplicateDiagnostics.recordFrame(
                 frameId = receivedFrameCount,
                 timestampNs = SystemClock.elapsedRealtimeNanos(),
@@ -186,7 +186,7 @@ class InspectionCoordinator(
             _duplicateDiagnostics.value = duplicateDiagnostics.snapshot()
             filterFrameCount++
             val confidenceEligibleCount = rawDetections.count {
-                it.confidence >= settings.detectorThreshold
+                it.confidence >= InspectionPostProcessor.MARKING_CONFIDENCE
             }
             if (filterFrameCount == 1L || filterFrameCount % 30L == 0L) {
                 Log.i(
@@ -194,19 +194,16 @@ class InspectionCoordinator(
                     "frame=$filterFrameCount raw=${rawDetections.size} " +
                         "confidenceEligible=$confidenceEligibleCount " +
                         "initialChips=${filteredDetections.initialChipCount} " +
-                        "acceptedChips=${filteredDetections.acceptedChipCount} " +
-                        "rejectedUndersized=${filteredDetections.rejectedUndersizedChipCount} " +
-                        "validatedEmpty=${filteredDetections.validatedEmptyDetections.size} " +
+                        "eligibleChips=${filteredDetections.eligibleChipCount} " +
+                        "acceptedChips=${processedFrame.chips.size} " +
+                        "rejectedChips=${filteredDetections.initialChipCount - processedFrame.chips.size} " +
                         "rawExamples=${formatDetections(rawDetections)} " +
                         "acceptedExamples=${formatDetections(detections)}"
                 )
             }
-            if (filteredDetections.validatedEmptyDetections.isEmpty()) {
-                tracker.removeTracksForDetections(
-                    detections = filteredDetections.rejectedUndersizedDetections,
-                    classId = 0
-                )
-            }
+            val rejectedFrameDetections = rawDetections.filter { it !in detections }
+            tracker.removeTracksForDetections(rejectedFrameDetections, classId = 0)
+            tracker.removeTracksForDetections(rejectedFrameDetections, classId = 1)
 
             // 2. Global scene motion detection
             val motionStartNs = SystemClock.elapsedRealtimeNanos()
@@ -239,15 +236,15 @@ class InspectionCoordinator(
                 candidates = renderedCandidates,
                 rawDetectorPredictions = rawDetections.size,
                 confidenceEligibleDetections = confidenceEligibleCount,
-                acceptedDetections = filteredDetections.acceptedChipCount,
-                rejectedUndersizedDetections = filteredDetections.rejectedUndersizedChipCount
+                acceptedDetections = processedFrame.chips.size,
+                rejectedUndersizedDetections = filteredDetections.initialChipCount - processedFrame.chips.size
             )
             _visibleCandidates.value = renderedCandidates
             if (filterFrameCount == 1L || filterFrameCount % 30L == 0L) {
                 Log.i(
                     "CHIPVISION_RENDER",
                     "chipBoxes=${renderedCandidates.count { it.isChip }} " +
-                        "emptyBoxes=${renderedCandidates.count { it.isEmptyImpression }} " +
+                        "markingBoxes=${renderedCandidates.count { it.isMarking }} " +
                         "overlayCandidates=${renderedCandidates.size} " +
                         "liveDetections=${liveCandidates.size}"
                 )
@@ -329,8 +326,8 @@ class InspectionCoordinator(
             val cameraStableElapsedMs = cameraStableSinceMs?.let { currentTimeMs - it } ?: 0L
 
             if (liveCandidates.isEmpty() && !cameraStableForRequiredDuration) {
-                // Keep a valid tracked box visible through the configured grace period,
-                // but do not classify from a frame that did not contain the detection.
+                // Keep a valid tracked box visible through the grace period, but do not
+                // decide from a frame that did not contain the detection.
                 _visibleCandidates.value = renderedCandidates
                 if (tracker.activeTrackCount() == 0) {
                     isInspectionFinalizedForCurrentScene = false
@@ -396,8 +393,8 @@ class InspectionCoordinator(
                             "atMs=$currentTimeMs"
                     )
                 }
-                _status.value = InspectionStatus.CLASSIFYING
-                _statusMessage.value = "Classifying chips while monitoring live scene..."
+                _status.value = InspectionStatus.EVALUATING
+                _statusMessage.value = "Evaluating detections while monitoring live scene..."
                 Log.i(
                     "CHIPVISION_RENDER",
                     "overlayUpdatedDuringClassification candidates=${renderedCandidates.size} " +
@@ -446,47 +443,16 @@ class InspectionCoordinator(
             recordMetric { performanceMetrics.recordSnapshotAge(snapshotAgeMs) }
             val inspectionCycleStartNs = SystemClock.elapsedRealtimeNanos()
 
-            // 7. EMPTY-IMPRESSION-FIRST CHECK (Section 9)
-            if (liveCandidates.any { it.isEmptyImpression }) {
-                Log.i(
-                    "CHIPVISION_CLASSIFICATION",
-                    "skipped reason=validated_empty_impression generation=$currentSessionId " +
-                        "snapshot=$snapshotId"
-                )
-                _status.value = InspectionStatus.CHECKING_EMPTY_IMPRESSIONS
-                val finalizationStartNs = SystemClock.elapsedRealtimeNanos()
-                finalizeInspection(
-                    candidates = inspectionCandidates,
-                    settings = settings,
-                    overrideDecision = InspectionDecisionEngine.evaluate(
-                        candidates = inspectionCandidates,
-                        sessionId = currentSessionId,
-                        snapshotId = snapshotId
-                    )
-                )
-                recordMetric {
-                    performanceMetrics.recordFinalization(
-                        (SystemClock.elapsedRealtimeNanos() - finalizationStartNs) / 1_000_000L
-                    )
-                    performanceMetrics.recordInspectionCycle(
-                        (SystemClock.elapsedRealtimeNanos() - inspectionCycleStartNs) / 1_000_000L
-                    )
-                }
-                lastFinalizedSceneCandidatesHash = currentSceneHash
-                snapshotFrame.recycle()
-                return
-            }
-
-            // 8. Submit classification away from the CameraX analyzer. The
+            // Submit post-processing away from the CameraX analyzer. The
             // immutable snapshot is separate from the live overlay state.
-            _status.value = InspectionStatus.CLASSIFYING
-            _statusMessage.value = "Classifying chips..."
+            _status.value = InspectionStatus.EVALUATING
+            _statusMessage.value = "Evaluating chips and markings..."
             Log.i(
                 "CHIPVISION_CLASSIFICATION",
                 "start generation=$currentSessionId snapshot=$currentSnapshotId " +
                     "candidates=${inspectionCandidates.size} snapshotAgeMs=$snapshotAgeMs"
             )
-            val classificationSessionId: String
+            val processingSessionId: String
             val authorization: ClassificationAuthorization
             val job: Job
             synchronized(stateLock) {
@@ -494,18 +460,18 @@ class InspectionCoordinator(
                     snapshotFrame.recycle()
                     return
                 }
-                classificationSessionId = currentSessionId
+                processingSessionId = currentSessionId
                 authorization = ClassificationAuthorization(
-                    sessionId = classificationSessionId,
+                    sessionId = processingSessionId,
                     sessionGeneration = sessionGeneration,
                     inspectionGeneration = snapshotInspectionGeneration,
                     snapshotId = snapshotId,
                     sceneHash = currentSceneHash,
-                    token = ++classificationToken
+                    token = ++processingToken
                 )
                 activeClassificationAuthorization = authorization
                 job = scope.launch(Dispatchers.Default, start = CoroutineStart.LAZY) {
-                    classifySnapshot(
+                    evaluateSnapshot(
                         snapshotFrame = snapshotFrame,
                         candidates = inspectionCandidates,
                         settings = settings,
@@ -514,40 +480,16 @@ class InspectionCoordinator(
                         cycleStartNs = inspectionCycleStartNs
                     )
                 }
-                classificationJob = job
+                processingJob = job
             }
             job.start()
 
         } catch (e: Exception) {
             Log.e(tag, "Inspection coordinator exception", e)
-            val decision = InspectionDecisionEngine.evaluate(
-                candidates = emptyList(),
-                sessionId = currentSessionId,
-                snapshotId = currentSnapshotId.ifBlank { UUID.randomUUID().toString() },
-                inferenceError = e.message ?: e.javaClass.simpleName
-            )
-            if (!isInspectionFinalizedForCurrentScene) {
-                Log.e(
-                    "CHIPVISION_CLASSIFICATION",
-                    "terminalFailure session=$currentSessionId snapshot=$currentSnapshotId " +
-                        "error=${e.javaClass.simpleName}: ${e.message}"
-                )
-                val finalizationStartNs = SystemClock.elapsedRealtimeNanos()
-                finalizeInspection(
-                    candidates = emptyList(),
-                    settings = settings,
-                    overrideDecision = decision
-                )
-                recordMetric {
-                    performanceMetrics.recordFinalization(
-                        (SystemClock.elapsedRealtimeNanos() - finalizationStartNs) / 1_000_000L
-                    )
-                }
-            } else {
-                _currentDecision.value = decision
-                _status.value = InspectionStatus.FAIL
-                _statusMessage.value = decision.message
-            }
+            _visibleCandidates.value = emptyList()
+            _currentDecision.value = null
+            _status.value = InspectionStatus.ERROR
+            _statusMessage.value = "Inspection processing error: ${e.message ?: e.javaClass.simpleName}"
         } finally {
             recordMetric {
                 performanceMetrics.recordFrameAnalysis(
@@ -558,7 +500,7 @@ class InspectionCoordinator(
         }
     }
 
-    private suspend fun classifySnapshot(
+    private suspend fun evaluateSnapshot(
         snapshotFrame: Bitmap,
         candidates: List<TrackedCandidate>,
         settings: InspectionSettings,
@@ -568,127 +510,48 @@ class InspectionCoordinator(
     ) {
         val sessionId = authorization.sessionId
         val snapshotId = authorization.snapshotId
-        val classificationStartNs = SystemClock.elapsedRealtimeNanos()
+        val startedNs = SystemClock.elapsedRealtimeNanos()
         try {
-            Log.i(
-                "CHIPVISION_CLASSIFICATION",
-                "jobStarted session=$sessionId snapshot=$snapshotId " +
-                    "snapshotAgeMs=$snapshotAgeMs"
-            )
-            val classifiedCandidates = mutableListOf<TrackedCandidate>()
-            for (chipCandidate in candidates) {
-                if (chipCandidate.isChip) {
-                    Log.d(
-                        "CHIPVISION_CLASSIFICATION",
-                        "cropSubmitted session=$sessionId snapshot=$snapshotId " +
-                            "track=${chipCandidate.trackId}"
-                    )
-                    val classification = if (settings.simulationMode && modelManager.classifierInterpreter == null) {
-                        simulateChipClassification(chipCandidate)
-                    } else {
-                        classifierService.classifyChip(
-                            sourceFrame = snapshotFrame,
-                            boundingBox = chipCandidate.boundingBox,
-                            threshold = settings.classifierThreshold
-                        )
-                    }
-                    classifiedCandidates.add(chipCandidate.copy(classification = classification))
-                } else {
-                    classifiedCandidates.add(chipCandidate)
-                }
-            }
-
-            val classificationDurationMs =
-                (SystemClock.elapsedRealtimeNanos() - cycleStartNs) / 1_000_000L
-            recordMetric { performanceMetrics.recordClassifier(classificationDurationMs) }
-            val finalDecision = synchronized(stateLock) {
-                if (!isClassificationAuthorized(authorization)) {
-                    null
-                } else {
-                    classifiedCandidates.forEach { candidate ->
-                        candidate.classification?.let { classification ->
-                            tracker.updateClassification(candidate.trackId, classification)
-                        }
-                    }
-                    val decision = InspectionDecisionEngine.evaluate(
-                        candidates = classifiedCandidates,
-                        sessionId = sessionId,
-                        snapshotId = snapshotId
-                    )
-                    _status.value = InspectionStatus.FINALIZING
-                    val finalizationStartNs = SystemClock.elapsedRealtimeNanos()
-                    finalizeInspection(
-                        candidates = classifiedCandidates,
-                        settings = settings,
-                        overrideDecision = decision
-                    )
-                    recordMetric {
-                        performanceMetrics.recordFinalization(
-                            (SystemClock.elapsedRealtimeNanos() - finalizationStartNs) / 1_000_000L
-                        )
-                        performanceMetrics.recordInspectionCycle(
-                            (SystemClock.elapsedRealtimeNanos() - cycleStartNs) / 1_000_000L
-                        )
-                    }
-                    lastFinalizedSceneCandidatesHash = authorization.sceneHash
-                    arrangementChangedDuringResultHold = inspectionDispatchState.complete() != null
-                    decision
-                }
-            }
-            if (finalDecision == null) {
-                recordMetric { performanceMetrics.recordStaleResultDiscarded() }
-                Log.w(
-                    "CHIPVISION_CLASSIFICATION",
-                    "staleResultDiscarded reason=authorization_changed " +
-                        "session=$sessionId snapshot=$snapshotId"
+            val detections = candidates.map { Detection(it.boundingBox, it.confidence, it.classId) }
+            val pipelineResult = InspectionPostProcessor.process(detections)
+            val acceptedCandidates = pipelineResult.acceptedDetections.mapIndexed { index, detection ->
+                TrackedCandidate(
+                    trackId = index.toLong(), classId = detection.classId,
+                    boundingBox = detection.boundingBox, confidence = detection.confidence,
+                    firstSeenMs = SystemClock.elapsedRealtime(), lastSeenMs = SystemClock.elapsedRealtime(),
+                    stabilityStartMs = null, isStable = true,
+                    sessionId = sessionId
                 )
-                return
             }
-            Log.i(
-                "CHIPVISION_CLASSIFICATION",
-                "jobCompleted session=$sessionId snapshot=$snapshotId " +
-                    "durationMs=$classificationDurationMs decision=${finalDecision.reasonCode.code} " +
-                    "pending=${arrangementChangedDuringResultHold}"
-            )
+            val decision = InspectionDecisionEngine.evaluate(pipelineResult, sessionId, snapshotId)
+            val durationMs = (SystemClock.elapsedRealtimeNanos() - startedNs) / 1_000_000L
+            recordMetric { performanceMetrics.recordPostProcessing(durationMs) }
+            recordMetric { performanceMetrics.recordInspectionCycle(durationMs) }
+            synchronized(stateLock) {
+                if (!isClassificationAuthorized(authorization)) {
+                    recordMetric { performanceMetrics.recordStaleResultDiscarded() }
+                    return
+                }
+                _visibleCandidates.value = acceptedCandidates
+                _status.value = InspectionStatus.FINALIZING
+                val finalizeStart = SystemClock.elapsedRealtimeNanos()
+                finalizeInspection(acceptedCandidates, settings, decision)
+                recordMetric { performanceMetrics.recordFinalization((SystemClock.elapsedRealtimeNanos() - finalizeStart) / 1_000_000L) }
+                lastFinalizedSceneCandidatesHash = authorization.sceneHash
+                arrangementChangedDuringResultHold = inspectionDispatchState.complete() != null
+            }
+            Log.i("CHIPWELL_PIPELINE", "snapshot=$snapshotId detections=${detections.size} accepted=${pipelineResult.acceptedDetections.size} result=${if (decision.isPass) "PASS" else "FAIL"} latencyMs=$durationMs")
         } catch (e: CancellationException) {
-            Log.i(
-                "CHIPVISION_CLASSIFICATION",
-                "jobCancelled session=$sessionId snapshot=$snapshotId"
-            )
             throw e
         } catch (e: Exception) {
-            Log.e(
-                "CHIPVISION_CLASSIFICATION",
-                "jobFailed session=$sessionId snapshot=$snapshotId",
-                e
-            )
-            val failureFinalized = synchronized(stateLock) {
-                if (!isClassificationAuthorized(authorization)) {
-                    false
-                } else {
-                    val decision = InspectionDecisionEngine.evaluate(
-                        candidates = emptyList(),
-                        sessionId = sessionId,
-                        snapshotId = snapshotId,
-                        inferenceError = e.message ?: e.javaClass.simpleName
-                    )
-                    finalizeInspection(
-                        candidates = emptyList(),
-                        settings = settings,
-                        overrideDecision = decision
-                    )
-                    lastFinalizedSceneCandidatesHash = authorization.sceneHash
-                    arrangementChangedDuringResultHold = inspectionDispatchState.complete() != null
-                    true
+            Log.e(tag, "Single-model post-processing failed", e)
+            synchronized(stateLock) {
+                if (isClassificationAuthorized(authorization)) {
+                    _visibleCandidates.value = emptyList()
+                    _currentDecision.value = null
+                    _status.value = InspectionStatus.ERROR
+                    _statusMessage.value = "Inspection processing error: ${e.message ?: e.javaClass.simpleName}"
                 }
-            }
-            if (!failureFinalized) {
-                recordMetric { performanceMetrics.recordStaleResultDiscarded() }
-                Log.w(
-                    "CHIPVISION_CLASSIFICATION",
-                    "staleResultDiscarded reason=classification_failure_authorization_changed " +
-                        "session=$sessionId snapshot=$snapshotId"
-                )
             }
         } finally {
             snapshotFrame.recycle()
@@ -696,12 +559,7 @@ class InspectionCoordinator(
                 if (activeClassificationAuthorization == authorization) {
                     inspectionDispatchState.complete()
                     activeClassificationAuthorization = null
-                    classificationJob = null
-                } else {
-                    Log.i(
-                        "CHIPVISION_CLASSIFICATION",
-                        "staleJobCleanupSkipped session=$sessionId snapshot=$snapshotId"
-                    )
+                    processingJob = null
                 }
             }
         }
@@ -759,9 +617,7 @@ class InspectionCoordinator(
                     message = overrideDecision.message,
                     chipCount = overrideDecision.chipCount,
                     emptyCount = overrideDecision.emptyCount,
-                    chipDetailsJson = overrideDecision.chips.joinToString(prefix = "[", postfix = "]") {
-                        "{\"trackId\":${it.trackId},\"type\":\"${it.chipType.displayName}\",\"orient\":\"${it.orientation.displayName}\",\"conf\":${it.confidence}}"
-                    }
+                    chipDetailsJson = overrideDecision.inspectionDetailsJson
                 )
                 inspectionDao.insertRecord(record)
             } catch (e: Exception) {
@@ -819,18 +675,7 @@ class InspectionCoordinator(
         for (c in candidates) {
             if (c.isChip) {
                 chips++
-                val cls = c.classification
-                if (cls != null && cls.isAccepted) {
-                    classified++
-                    when (cls.orientation) {
-                        com.example.chipvision.data.model.ChipOrientation.CORRECT_UPWARD -> upward++
-                        com.example.chipvision.data.model.ChipOrientation.DOWNWARD -> downward++
-                        com.example.chipvision.data.model.ChipOrientation.FLIPPED -> flipped++
-                        else -> {}
-                    }
-                }
-            } else if (c.isEmptyImpression) {
-                empty++
+                classified++
             }
         }
 
@@ -863,7 +708,7 @@ class InspectionCoordinator(
         filterDurationMs: Long,
         motionDurationMs: Long,
         trackingDurationMs: Long,
-        classificationDurationMs: Long,
+        postProcessingDurationMs: Long,
         frameStartNs: Long,
         liveCandidateCount: Int,
         isSceneMoving: Boolean
@@ -875,7 +720,7 @@ class InspectionCoordinator(
                 "CHIPVISION_TIMING",
                 "frame=$processedFrameCount detectorMs=$detectorDurationMs " +
                     "filterMs=$filterDurationMs motionMs=$motionDurationMs " +
-                    "trackingMs=$trackingDurationMs classificationMs=$classificationDurationMs " +
+                    "trackingMs=$trackingDurationMs postProcessingMs=$postProcessingDurationMs " +
                     "totalMs=$totalDurationMs liveCandidates=$liveCandidateCount " +
                     "moving=$isSceneMoving"
             )
@@ -885,26 +730,13 @@ class InspectionCoordinator(
     private fun updateCumulativeStats(decision: InspectionDecision, candidates: List<TrackedCandidate>) {
         val current = _cumulativeStats.value
         val isPass = decision.isPass
-        val isErr = decision.reasonCode == ReasonCode.FAIL_INFERENCE_ERROR
+        val isErr = false // Technical errors are surfaced through ERROR and are not product inspections.
 
         var newUpward = current.upwardChipsCount
         var newDownward = current.downwardChipsCount
         var newFlipped = current.flippedChipsCount
-        var newClassified = current.totalChipsClassified
+        val newClassified = current.totalChipsClassified + decision.chipCount
         val newEmpty = current.emptyImpressionsCount + decision.emptyCount
-
-        for (c in candidates) {
-            val cls = c.classification
-            if (cls != null && cls.isAccepted) {
-                newClassified++
-                when (cls.orientation) {
-                    com.example.chipvision.data.model.ChipOrientation.CORRECT_UPWARD -> newUpward++
-                    com.example.chipvision.data.model.ChipOrientation.DOWNWARD -> newDownward++
-                    com.example.chipvision.data.model.ChipOrientation.FLIPPED -> newFlipped++
-                    else -> {}
-                }
-            }
-        }
 
         _cumulativeStats.value = current.copy(
             totalInspections = current.totalInspections + 1,
@@ -949,9 +781,9 @@ class InspectionCoordinator(
             sessionGeneration++
             inspectionGeneration++
             activeClassificationAuthorization = null
-            jobsToCancel = resultHoldJob to classificationJob
+            jobsToCancel = resultHoldJob to processingJob
             resultHoldJob = null
-            classificationJob = null
+            processingJob = null
             inspectionDispatchState.clear()
             resultHoldUntilMs = 0L
             arrangementChangedDuringResultHold = false
@@ -985,9 +817,9 @@ class InspectionCoordinator(
             sessionGeneration++
             inspectionGeneration++
             activeClassificationAuthorization = null
-            jobsToCancel = resultHoldJob to classificationJob
+            jobsToCancel = resultHoldJob to processingJob
             resultHoldJob = null
-            classificationJob = null
+            processingJob = null
             inspectionDispatchState.clear()
             resultHoldUntilMs = 0L
             arrangementChangedDuringResultHold = false
@@ -1033,18 +865,17 @@ class InspectionCoordinator(
                 boundingBox = android.graphics.RectF(w * 0.55f, h * 0.35f, w * 0.80f, h * 0.65f),
                 confidence = 0.93f,
                 classId = 0
+            ),
+            Detection(
+                boundingBox = android.graphics.RectF(w * 0.29f, h * 0.36f, w * 0.36f, h * 0.41f),
+                confidence = 0.92f,
+                classId = 1
+            ),
+            Detection(
+                boundingBox = android.graphics.RectF(w * 0.75f, h * 0.47f, w * 0.79f, h * 0.53f),
+                confidence = 0.91f,
+                classId = 1
             )
-        )
-    }
-
-    private fun simulateChipClassification(candidate: TrackedCandidate): com.example.chipvision.data.model.ChipClassification {
-        return com.example.chipvision.data.model.ChipClassification(
-            chipType = com.example.chipvision.data.model.ChipType.PCS_06_K,
-            orientation = com.example.chipvision.data.model.ChipOrientation.CORRECT_UPWARD,
-            classIndex = 0,
-            label = "PCS_06_K_correct_upward",
-            confidence = 0.96f,
-            isAccepted = true
         )
     }
 

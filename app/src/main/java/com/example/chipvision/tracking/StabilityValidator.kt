@@ -96,14 +96,12 @@ class StabilityValidator {
             return CandidatesStabilityResult(
                 isAllStable = false,
                 stableCandidates = emptyList(),
-                unstableCandidates = emptyList(),
-                hasEmptyImpression = false
+                unstableCandidates = emptyList()
             )
         }
 
         val stableList = mutableListOf<TrackedCandidate>()
         val unstableList = mutableListOf<TrackedCandidate>()
-        var hasEmpty = false
 
         for (c in candidates) {
             val duration = if (c.stabilityStartMs != null) currentTimeMs - c.stabilityStartMs else 0L
@@ -111,9 +109,6 @@ class StabilityValidator {
 
             if (isStable) {
                 stableList.add(c)
-                if (c.isEmptyImpression) {
-                    hasEmpty = true
-                }
             } else {
                 unstableList.add(c)
             }
@@ -124,8 +119,7 @@ class StabilityValidator {
         return CandidatesStabilityResult(
             isAllStable = isAllStable,
             stableCandidates = stableList,
-            unstableCandidates = unstableList,
-            hasEmptyImpression = hasEmpty
+            unstableCandidates = unstableList
         )
     }
 
@@ -139,6 +133,5 @@ class StabilityValidator {
 data class CandidatesStabilityResult(
     val isAllStable: Boolean,
     val stableCandidates: List<TrackedCandidate>,
-    val unstableCandidates: List<TrackedCandidate>,
-    val hasEmptyImpression: Boolean
+    val unstableCandidates: List<TrackedCandidate>
 )
