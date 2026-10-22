@@ -8,7 +8,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -437,20 +439,22 @@ fun SettingsScreen(
             ) {
                 FilledTonalButton(
                     onClick = { viewModel.testBuzzer() },
-                    modifier = Modifier.weight(1f).testTag("test_buzzer_button")
+                    modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("test_buzzer_button"),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
                 ) {
                     Icon(Icons.Default.VolumeUp, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Test Buzzer")
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Test Buzzer", maxLines = 2)
                 }
 
                 FilledTonalButton(
                     onClick = { viewModel.testVoice() },
-                    modifier = Modifier.weight(1f).testTag("test_voice_button")
+                    modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("test_voice_button"),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
                 ) {
                     Icon(Icons.Default.RecordVoiceOver, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Test Voice")
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Test Voice", maxLines = 2)
                 }
             }
         }
@@ -597,7 +601,8 @@ private fun SettingsSectionCard(
                     text = title,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f)
                 )
             }
 

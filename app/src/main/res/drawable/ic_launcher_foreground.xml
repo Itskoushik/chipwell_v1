@@ -3,22 +3,31 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path
-        android:fillColor="#00000000"
-        android:pathData="M24,34L24,24L34,24M74,24L84,24L84,34M84,74L84,84L74,84M34,84L24,84L24,74"
-        android:strokeColor="#39D9FF"
-        android:strokeLineCap="square"
-        android:strokeWidth="4" />
-    <path
-        android:fillColor="#102B49"
-        android:pathData="M34,34h40v40h-40z" />
-    <path
-        android:fillColor="#39D9FF"
-        android:pathData="M42,42h24v24h-24z" />
-    <path
-        android:fillColor="#07111F"
-        android:pathData="M48,48h12v12h-12z" />
-    <path
-        android:fillColor="#39D9FF"
-        android:pathData="M18,42h12v4h-12zM18,52h12v4h-12zM18,62h12v4h-12zM78,42h12v4h-12zM78,52h12v4h-12zM78,62h12v4h-12zM42,18h4v12h-4zM52,18h4v12h-4zM62,18h4v12h-4zM42,78h4v12h-4zM52,78h4v12h-4zM62,78h4v12h-4z" />
+    <group
+        android:name="logoMark"
+        android:pivotX="54"
+        android:pivotY="54">
+        <!-- Four scan corners frame the chip without filling the adaptive-icon safe zone. -->
+        <path
+            android:fillColor="#00000000"
+            android:pathData="M25,39L25,29L35,29M73,29L83,29L83,39M83,69L83,79L73,79M35,79L25,79L25,69"
+            android:strokeColor="#39D9FF"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:strokeWidth="4" />
+        <!-- Chip body and pins. -->
+        <path
+            android:fillColor="#39D9FF"
+            android:pathData="M40,33L68,33L68,38L73,38L73,70L68,70L68,75L40,75L40,70L35,70L35,38L40,38Z" />
+        <path
+            android:fillColor="#102B49"
+            android:pathData="M44,42L64,42L64,66L44,66Z" />
+        <path
+            android:fillColor="#39D9FF"
+            android:pathData="M45,20L49,20L49,30L45,30ZM53,20L57,20L57,30L53,30ZM61,20L65,20L65,30L61,30ZM45,78L49,78L49,88L45,88ZM53,78L57,78L57,88L53,88ZM61,78L65,78L65,88L61,88ZM20,43L30,43L30,47L20,47ZM20,51L30,51L30,55L20,55ZM20,59L30,59L30,63L20,63ZM78,43L88,43L88,47L78,47ZM78,51L88,51L88,55L78,55ZM78,59L88,59L88,63L78,63Z" />
+        <!-- Inspection check. -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M48,53L51,50L55,54L61,47L64,50L55,61Z" />
+    </group>
 </vector>

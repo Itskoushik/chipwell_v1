@@ -10,6 +10,7 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.History
@@ -32,7 +33,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.chipvision.ui.AppScreen
@@ -70,15 +73,17 @@ class MainActivity : ComponentActivity() {
                                 if (currentScreen == AppScreen.HOME) {
                                     Column {
                                         Text(
-                                            text = "CHIPVISION",
+                                            text = "CHIPVEL",
                                             fontWeight = FontWeight.Black,
                                             letterSpacing = 1.2.sp,
                                             fontSize = 18.sp
                                         )
                                         Text(
-                                            text = "Automated Chip Inspection System",
+                                            text = "Automated chip inspection by Harvel",
                                             style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                     }
                                 } else {
@@ -88,7 +93,7 @@ class MainActivity : ComponentActivity() {
                                             AppScreen.HISTORY -> "Inspection History"
                                             AppScreen.SETTINGS -> "Settings"
                                             AppScreen.DIAGNOSTICS -> "Model Diagnostics"
-                                            AppScreen.HOME -> "CHIPVISION"
+                                            AppScreen.HOME -> "CHIPVEL"
                                         },
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 18.sp
@@ -108,10 +113,10 @@ class MainActivity : ComponentActivity() {
                                     }
                                 } else {
                                     Icon(
-                                        imageVector = Icons.Default.Memory,
-                                        contentDescription = "Logo",
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.padding(start = 12.dp)
+                                        painter = painterResource(com.example.R.drawable.ic_launcher_foreground),
+                                        contentDescription = "Chipvel logo",
+                                        tint = androidx.compose.ui.graphics.Color.Unspecified,
+                                        modifier = Modifier.padding(start = 12.dp).size(32.dp)
                                     )
                                 }
                             },
