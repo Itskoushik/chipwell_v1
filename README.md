@@ -1,34 +1,112 @@
-# CHIPWELL Android Inspection
+# Chipvel
 
-CHIPWELL is an Android camera inspection app for chips moving on a conveyor. It uses Jetpack Compose, CameraX, TensorFlow Lite, Room, Bluetooth, and ESP32 integration.
+**Automated chip inspection by Harvel Systems**
 
-## Inspection model and pipeline
+Chipvel is an Android application for camera-based inspection of electronic chips in a conveyor workflow. It uses an on-device TensorFlow Lite model to detect chips and their markings, applies inspection rules, and presents clear **PASS** or **FAIL** results to the operator.
 
-The inspection workflow uses one model: `app/src/main/assets/chipwell_yolo26n.tflite`.
+## Features
 
-The checked asset SHA-256 is `7f564d6f8057d4968ac68994b702781f9c4326180876437df8893e10fd78fd00`. Its FlatBuffer tensor metadata reports input `[1, 3, 512, 512]` and output `[1, 6, 5376]`, both float tensors. The dense 5,376-candidate output has no embedded NMS operator; Android applies class-aware greedy NMS at IoU `0.70` with a 300-box cap. Detector input is RGB, float32 scaled to `[0,1]`, letterboxed to 512 square with value 114. The Android decoder treats each output candidate as `(centerX, centerY, width, height, chipScore, markingScore)`. That numeric decoder and preprocessing still need device-side comparison against the Colab reference before parity can be claimed.
+- **Live inspection:** Camera preview with chip and marking overlays.
+- **Inspection region:** Configure the region of the camera image used for inspection.
+- **Stable-scene checks:** Wait for the camera view to settle before evaluating a scene.
+- **Operator feedback:** Display PASS/FAIL results and optionally play buzzer and voice announcements.
+- **Inspection history:** Review saved inspections and their results on the device.
+- **Settings:** Configure the inspection region, stability behavior, and audio options.
+- **Diagnostics:** Check model availability and view inspection performance information.
+- **Simulation mode:** Exercise the inspection workflow when a live conveyor or camera scene is unavailable. Simulation is for workflow checks and does not replace live model inspection.
 
-Class ID 0 is `chip`; class ID 1 is `marking`. The post-processing configuration is centralized in `InspectionPostProcessor`:
+## How inspection works
 
-- Chip confidence: `0.80`
-- Marking confidence: `0.70`
-- Relative chip and marking size tolerance: `0.25`
-- Marking-to-chip overlap: at least `0.50` of marking area
-- Markings nearest the top or right chip edge pass; left or bottom fail
+The live camera feed is analyzed by the bundled model. Chip and marking detections are filtered and evaluated against the inspection rules. The app then shows the result, updates the inspection overlay, and saves the inspection for later review.
 
-Only accepted chips and retained markings appear in the camera overlay. The result popup contains only `PASS` or `FAIL`. Technical model or inference failures use the app's `ERROR` state and do not become product FAIL records. Inference and post-processing run away from the UI thread.
+```mermaid
+flowchart LR
+    A[Camera preview] --> B[On-device detection]
+    B --> C[Filter and stabilize detections]
+    C --> D[Evaluate chip markings]
+    D --> E[PASS or FAIL]
+    E --> F[Operator feedback]
+    E --> G[Local inspection history]
+```
 
-## Existing application features
+## Main screens
 
-Camera preview, camera stability handling, Bluetooth/ESP32 connectivity, conveyor workflow, result audio/voice alerts, result timing, diagnostics, Room inspection history, and navigation remain in the app.
+| Screen | Purpose |
+| --- | --- |
+| **Home** | Check system readiness, start an inspection, view summary counts, and read about Harvel Systems. |
+| **Live Inspection** | View the camera feed and overlays, monitor inspection status, and start, stop, or resume a session. |
+| **History** | Browse saved inspections, filter results, and open record details. |
+| **Settings** | Set the inspection region and configure stability, sound, voice, and simulation options. |
+| **Diagnostics** | Review model loading status and inspection performance information. |
 
-Simulation Mode remains an explicit UI testing option. It does not act as a fallback model for production inspection.
+## Technology
 
-## Architecture
+- **Kotlin** - application language
+- **Jetpack Compose** and **Material 3** - user interface
+- **CameraX** - camera preview and image analysis
+- **TensorFlow Lite** - on-device chip and marking detection
+- **Room** - local inspection records
+- **DataStore** - persisted application settings
+- **Kotlin Coroutines** - asynchronous work
 
-- `com.example.chipvision.inference`: `ModelManager`, `DetectorService`, dense-output decoder, and NMS.
-- `com.example.chipvision.engine`: inspection coordination, confidence eligibility, chip/marking post-processing, result dispatch, and performance metrics.
-- `com.example.chipvision.tracking`: camera detection tracking and stability handling.
-- `com.example.chipvision.camera`: CameraX preview and image analysis.
-- `com.example.chipvision.audio`: result beep and voice announcements.
-- `com.example.chipvision.ui`: Compose inspection, result popup, history, settings, and diagnostics screens.
+## Requirements
+
+- Android Studio with Android SDK 36
+- JDK 17
+- Android 7.0 (API 24) or newer
+- Camera access for live inspection
+
+## Getting started
+
+1. Open the project in Android Studio and allow Gradle to sync.
+2. Select the `app` run configuration.
+3. Connect an Android device or start an emulator running Android 7.0 or newer.
+4. Run the app and grant camera permission when prompted.
+
+The inspection model is included in the repository at:
+
+```text
+app/src/main/assets/chipwell_yolo26n.tflite
+```
+
+Keep this asset in place for model loading and live inspection.
+
+## Build and test
+
+Build a debug APK from PowerShell:
+
+```powershell
+.\gradlew.bat :app:assembleDebug
+```
+
+On macOS or Linux, use:
+
+```bash
+./gradlew :app:assembleDebug
+```
+
+Run the Android unit tests from PowerShell:
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest
+```
+
+The debug APK is written under `app/build/outputs/apk/debug/`.
+
+## Project structure
+
+```text
+app/src/main/
+|-- assets/       Bundled inspection model
+|-- java/         Android application source
+|   `-- ...
+`-- res/          App icon, splash screen, and UI resources
+```
+
+Within the application source, camera, inference, inspection workflow, tracking, local data, audio, and Compose UI code are grouped by responsibility.
+
+## About Harvel Systems
+
+Harvel Systems is an ISO 9001:2015-certified technology services organization focused on embedded hardware and software turnkey design. Its work spans industrial automation, medical technology, and embedded computing, with services that include hardware and FPGA design, software development, system design, test and prototyping, ODM, enclosure CAD, and onsite engineering support.
+
+Harvel also supports new product design, redesign, and reverse engineering, with a focus on timely delivery, quality, and continual improvement.
