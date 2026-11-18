@@ -30,7 +30,8 @@ enum class AppScreen {
     INSPECTION,
     HISTORY,
     SETTINGS,
-    DIAGNOSTICS
+    DIAGNOSTICS,
+    ABOUT
 }
 
 // Kept for backward compatibility

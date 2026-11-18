@@ -1,6 +1,10 @@
-# Chipvel
+# CHIPVEL
 
-**Automated chip inspection by Harvel Systems**
+**Automated Chip Inspection System**
+
+<p align="center">
+  <img src="chipvel.gif" alt="CHIPVEL application preview" width="720" />
+</p>
 
 Chipvel is an Android application for camera-based inspection of electronic chips in a conveyor workflow. It uses an on-device TensorFlow Lite model to detect chips and their markings, applies inspection rules, and presents clear **PASS** or **FAIL** results to the operator.
 
@@ -33,7 +37,7 @@ flowchart LR
 
 | Screen | Purpose |
 | --- | --- |
-| **Home** | Check system readiness, start an inspection, view summary counts, and read about Harvel Systems. |
+| **Home** | Check system readiness, start an inspection, and view summary counts. |
 | **Live Inspection** | View the camera feed and overlays, monitor inspection status, and start, stop, or resume a session. |
 | **History** | Browse saved inspections, filter results, and open record details. |
 | **Settings** | Set the inspection region and configure stability, sound, voice, and simulation options. |
@@ -105,8 +109,6 @@ app/src/main/
 
 Within the application source, camera, inference, inspection workflow, tracking, local data, audio, and Compose UI code are grouped by responsibility.
 
-## About Harvel Systems
+## Product notice
 
-Harvel Systems is an ISO 9001:2015-certified technology services organization focused on embedded hardware and software turnkey design. Its work spans industrial automation, medical technology, and embedded computing, with services that include hardware and FPGA design, software development, system design, test and prototyping, ODM, enclosure CAD, and onsite engineering support.
-
-Harvel also supports new product design, redesign, and reverse engineering, with a focus on timely delivery, quality, and continual improvement.
+Copyright &#169; 2026 CHIPVEL. All rights reserved. Use and distribution are subject to applicable authorization and license terms.

@@ -34,6 +34,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -41,6 +42,7 @@ import androidx.compose.ui.unit.sp
 import com.example.chipvision.ui.AppScreen
 import com.example.chipvision.ui.ChipVisionViewModel
 import com.example.chipvision.ui.screens.DiagnosticsScreen
+import com.example.chipvision.ui.screens.AboutScreen
 import com.example.chipvision.ui.screens.HistoryScreen
 import com.example.chipvision.ui.screens.HomeScreen
 import com.example.chipvision.ui.screens.InspectionScreen
@@ -62,7 +64,9 @@ class MainActivity : ComponentActivity() {
 
                 // BackHandler returns to HOME screen from any other destination
                 BackHandler(enabled = currentScreen != AppScreen.HOME) {
-                    viewModel.navigateTo(AppScreen.HOME)
+                    viewModel.navigateTo(
+                        if (currentScreen == AppScreen.ABOUT) AppScreen.SETTINGS else AppScreen.HOME
+                    )
                 }
 
                 Scaffold(
@@ -73,13 +77,13 @@ class MainActivity : ComponentActivity() {
                                 if (currentScreen == AppScreen.HOME) {
                                     Column {
                                         Text(
-                                            text = "CHIPVEL",
+                                            text = stringResource(com.example.R.string.brand_product_name),
                                             fontWeight = FontWeight.Black,
                                             letterSpacing = 1.2.sp,
                                             fontSize = 18.sp
                                         )
                                         Text(
-                                            text = "Automated chip inspection by Harvel",
+                                            text = stringResource(com.example.R.string.brand_product_description),
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             maxLines = 1,
@@ -93,7 +97,8 @@ class MainActivity : ComponentActivity() {
                                             AppScreen.HISTORY -> "Inspection History"
                                             AppScreen.SETTINGS -> "Settings"
                                             AppScreen.DIAGNOSTICS -> "Model Diagnostics"
-                                            AppScreen.HOME -> "CHIPVEL"
+                                            AppScreen.ABOUT -> stringResource(com.example.R.string.about_screen_title)
+                                            AppScreen.HOME -> stringResource(com.example.R.string.brand_product_name)
                                         },
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 18.sp
@@ -103,7 +108,11 @@ class MainActivity : ComponentActivity() {
                             navigationIcon = {
                                 if (currentScreen != AppScreen.HOME) {
                                     IconButton(
-                                        onClick = { viewModel.navigateTo(AppScreen.HOME) },
+                                        onClick = {
+                                            viewModel.navigateTo(
+                                                if (currentScreen == AppScreen.ABOUT) AppScreen.SETTINGS else AppScreen.HOME
+                                            )
+                                        },
                                         modifier = Modifier.testTag("top_bar_back_button")
                                     ) {
                                         Icon(
@@ -194,6 +203,9 @@ class MainActivity : ComponentActivity() {
                         )
                         AppScreen.DIAGNOSTICS -> DiagnosticsScreen(
                             viewModel = viewModel,
+                            modifier = Modifier.padding(innerPadding)
+                        )
+                        AppScreen.ABOUT -> AboutScreen(
                             modifier = Modifier.padding(innerPadding)
                         )
                     }

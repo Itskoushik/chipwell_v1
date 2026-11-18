@@ -52,6 +52,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -66,6 +67,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.example.chipvision.ui.AppScreen
 import com.example.chipvision.ui.ChipVisionViewModel
+import com.example.R
 
 @Composable
 fun HomeScreen(
@@ -215,7 +217,7 @@ fun HomeScreen(
                     }
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Welcome to Chipvel",
+                            text = stringResource(R.string.home_welcome, stringResource(R.string.brand_product_name)),
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface,
@@ -317,15 +319,36 @@ fun HomeScreen(
                         verticalArrangement = Arrangement.spacedBy(3.dp)
                     ) {
                         Text(
-                            text = "About Harvel Systems",
+                            text = stringResource(
+                                R.string.about_company_title,
+                                stringResource(R.string.brand_company_name)
+                            ),
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "Chipvel is automated chip inspection by Harvel.",
+                            text = "${stringResource(R.string.brand_product_name)} - ${stringResource(R.string.brand_product_description)}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        Text(
+                            text = stringResource(R.string.brand_ownership_statement),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = MaterialTheme.colorScheme.surfaceVariant
+                        ) {
+                            Text(
+                                text = stringResource(R.string.brand_product_classification),
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                letterSpacing = 0.6.sp
+                            )
+                        }
                     }
                     Icon(
                         imageVector = if (isAboutExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
@@ -346,17 +369,17 @@ fun HomeScreen(
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Text(
-                            text = "Harvel Systems is an ISO 9001:2015-certified technology services organization specializing in turnkey embedded hardware and software design.",
+                            text = stringResource(R.string.harvel_about_paragraph_1),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
-                            text = "Its engineering services support industrial automation, medical technology, and embedded computing. The portfolio includes embedded hardware, FPGA and software development, system design, testing, prototyping, ODM, enclosure CAD, and onsite engineering support.",
+                            text = stringResource(R.string.harvel_about_paragraph_2),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
-                            text = "Harvel works with customers on new product design, redesign, and reverse engineering, with a focus on timely delivery, quality, and continual improvement.",
+                            text = stringResource(R.string.harvel_about_paragraph_3),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

@@ -19,6 +19,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.RecordVoiceOver
@@ -58,11 +59,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.chipvision.ui.AppScreen
 import com.example.chipvision.ui.ChipVisionViewModel
 import com.example.chipvision.data.preferences.InspectionRoi
+import com.example.R
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -489,6 +492,23 @@ fun SettingsScreen(
                     },
                     modifier = Modifier.testTag("simulation_mode_switch")
                 )
+            }
+        }
+
+        SettingsSectionCard(
+            title = stringResource(R.string.about_settings_title),
+            icon = Icons.Default.Info
+        ) {
+            Text(
+                text = stringResource(R.string.about_settings_description),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            OutlinedButton(
+                onClick = { viewModel.navigateTo(AppScreen.ABOUT) },
+                modifier = Modifier.fillMaxWidth().testTag("open_about_screen_button")
+            ) {
+                Text(stringResource(R.string.about_view_details))
             }
         }
     }

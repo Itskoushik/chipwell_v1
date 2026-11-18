@@ -1,3 +1,20 @@
 <resources>
-    <string name="app_name">Chipvel</string>
+    <string name="brand_product_name">CHIPVEL</string>
+    <string name="brand_product_description">Automated Chip Inspection System</string>
+    <string name="brand_company_name">HARVEL Systems</string>
+    <string name="brand_ownership_statement">A Proprietary Product of HARVEL Systems</string>
+    <string name="brand_copyright_notice">Copyright &#169; 2026 HARVEL Systems. All rights reserved.</string>
+    <string name="brand_product_classification">PROPRIETARY PRODUCT</string>
+    <string name="about_company_title">About %1$s</string>
+    <string name="harvel_logo_description">HARVEL Systems logo</string>
+    <string name="app_name">@string/brand_product_name</string>
+    <string name="home_welcome">Welcome to %1$s</string>
+    <string name="about_screen_title">About CHIPVEL</string>
+    <string name="about_version">Version %1$s</string>
+    <string name="about_settings_title">About this product</string>
+    <string name="about_settings_description">Product details, company information, and notices.</string>
+    <string name="about_view_details">View CHIPVEL details</string>
+    <string name="harvel_about_paragraph_1">HARVEL Systems is an ISO 9001:2015-certified technology services organization focused on embedded hardware and software turnkey design services.</string>
+    <string name="harvel_about_paragraph_2">The company provides integrated engineering for industrial automation, medical technology, and embedded computing. Services include embedded hardware, FPGA and software development, turnkey system design, testing, prototyping, ODM, enclosure CAD, and onsite resourcing support.</string>
+    <string name="harvel_about_paragraph_3">HARVEL supports new product design, redesign, and reverse engineering, with a focus on timely delivery, quality, and continual improvement.</string>
 </resources>
